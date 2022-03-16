@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "vt2m"
+version = "0.1.0"
+description = "Automatically import results from VirusTotal queries into MISP objects"
+authors = ["3c7 <3c7@posteo.de>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+requests = "^2.27.1"
+vt-py = "^0.14.0"
+pymisp = "^2.4.155"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+vt2m = "vt2m.vt2m:cli"
