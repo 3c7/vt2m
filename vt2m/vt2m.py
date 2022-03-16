@@ -70,7 +70,7 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None, di
 
 
 def cli():
-    parser = ArgumentParser("v2m")
+    parser = ArgumentParser("vt2m")
     parser.add_argument("--uuid", "-u", type=str, required=True, help="MISP event uuid")
     parser.add_argument("--url", "-U", type=str, help="MISP URL - can also be given as env MISP_URL")
     parser.add_argument("--key", "-k", type=str, help="MISP API key - can also be given as env MISP_KEY")

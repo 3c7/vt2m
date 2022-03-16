@@ -1,4 +1,4 @@
-# VirusTotal Query 2 MISP (vtq2misp)
+# VirusTotel Query to MISP Objects (vt2m)
 
 While there are multiple Python projects which implement the object creation based on single VirusTotal objects, this
 project aims to enable users to directly convert VirusTotal search queries to MISP objects.
@@ -8,7 +8,7 @@ file objects are implemented.
 ## Installation
 
 ```
-pip install vtq2misp  # (not yet)
+pip install vt2m
 ```
 
 ## Usage
@@ -17,7 +17,7 @@ If you use the script frequently, passing the arguments as environment variables
 can be useful to save some time. 
 
 ```
-usage: v2m [-h] --uuid UUID [--url URL] [--key KEY] [--vt-key VT_KEY] [--comment COMMENT] query
+usage: vt2m [-h] --uuid UUID [--url URL] [--key KEY] [--vt-key VT_KEY] [--comment COMMENT] query
 
 positional arguments:
   query                 VT query
