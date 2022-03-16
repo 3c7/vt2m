@@ -45,11 +45,10 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None, di
     f_obj.add_attribute("sha1", simple_value=file["sha1"])
     f_obj.add_attribute("sha256", simple_value=sha256)
 
-    mn = file.get("meaningful_name", None)
-    if mn:
-        f_obj.add_attribute("filename", mn)
-    else:
-        print(f"No meaningful name for {sha256}.")
+    names = file.get("names", [])
+    if len(names) > 0:
+        for name in names:
+            f_obj.add_attribute("filename", name)
 
     imp = file.get("pe_info", {}).get("imphash", None)
     if imp:
@@ -62,6 +61,10 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None, di
     tlsh = file.get("tlsh", None)
     if tlsh:
         f_obj.add_attribute("tlsh", simple_value=tlsh)
+
+    telfhash = file.get("telfhash", None)
+    if telfhash:
+        f_obj.add_attribute("telfhash", simple_value=telfhash)
 
     creation_date = file.get("creation_date", None)
     if creation_date:
