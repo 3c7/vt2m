@@ -9,10 +9,10 @@ from pymisp import PyMISP, MISPEvent
 from vt import Client as VTClient
 
 
-def query(api_key: str, query: str) -> List:
+def query(api_key: str, query: str, limit: int = 100) -> List:
     """Queries VT API and yields a list of results."""
     with VTClient(apikey=api_key) as vt_client:
-        response = vt_client.get(f"/intelligence/search?query={quote_plus(query)}")
+        response = vt_client.get(f"/intelligence/search?query={quote_plus(query)}&limit={limit}")
         results = response.json()
         return results.get("data", [])
 
@@ -79,6 +79,7 @@ def cli():
     parser.add_argument("--key", "-k", type=str, help="MISP API key - can also be given as env MISP_KEY")
     parser.add_argument("--vt-key", "-K", type=str, help="VT API key - can also be given as env VT_KEY")
     parser.add_argument("--comment", "-c", type=str, help="Comment to add to MISP objects")
+    parser.add_argument("--limit", "-l", type=int, help="Limit results of VT query - default is 100")
     parser.add_argument("query", type=str, help="VT query")
     args = parser.parse_args()
 
@@ -100,6 +101,6 @@ def cli():
     misp = PyMISP(url, key)
     misp.global_pythonify = True
     event = misp.get_event(args.uuid)
-    results = query(vtkey, args.query)
+    results = query(vtkey, args.query, args.limit)
     process_results(results, event, args.comment)
     misp.update_event(event)
