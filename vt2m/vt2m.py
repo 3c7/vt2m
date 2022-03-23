@@ -187,7 +187,9 @@ def cli():
     parser.add_argument("--comment", "-c", type=str, help="Comment to add to MISP objects")
     parser.add_argument("--limit", "-l", type=int, help="Limit results of VT query - default is 100")
     parser.add_argument("--relations", "-r", type=str, help="Comma-seperated list of relations to request PER result "
-                                                            "(if type fits). This can burn your API credits.")
+                                                            "(if type fits). This can burn your API credits. "
+                                                            "Currently implemented: dropped_files, executing_parents, "
+                                                            "bundled_files")
     parser.add_argument("query", type=str, help="VT query")
     args = parser.parse_args()
 

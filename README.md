@@ -14,10 +14,14 @@ pip install vt2m
 ## Usage
 
 If you use the script frequently, passing the arguments as environment variables (`MISP_URL`, `MISP_KEY`, `VT_KEY`)
-can be useful to save some time. 
+can be useful to save some time. For example, this can be achieved through creating a shell script which passes the
+environment variables and executes the command with spaces in front, so it does not show up in the shell history.
+
+Via `--relations` VirusTotal relations can be resolved and added as MISP objects with the specific relations, e.g.:
+![MISP Graph](.github/screenshots/graph.png)
 
 ```
-usage: vt2m [-h] --uuid UUID [--url URL] [--key KEY] [--vt-key VT_KEY] [--comment COMMENT] query
+usage: vt2m [-h] --uuid UUID [--url URL] [--key KEY] [--vt-key VT_KEY] [--comment COMMENT] [--limit LIMIT] [--relations RELATIONS] query
 
 positional arguments:
   query                 VT query
@@ -31,4 +35,9 @@ optional arguments:
                         VT API key - can also be given as env VT_KEY
   --comment COMMENT, -c COMMENT
                         Comment to add to MISP objects
+  --limit LIMIT, -l LIMIT
+                        Limit results of VT query - default is 100
+  --relations RELATIONS, -r RELATIONS
+                        Comma-seperated list of relations to request PER result (if type fits). This can burn your API credits. Currently
+                        implemented: dropped_files, executing_parents, bundled_files
 ```
