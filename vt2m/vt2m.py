@@ -5,7 +5,7 @@ from sys import stderr
 from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
 
-from pymisp import PyMISP, MISPEvent
+from pymisp import PyMISP, MISPEvent, MISPObject
 from vt import Client as VTClient
 
 
@@ -21,26 +21,32 @@ def query(api_key: str, query: str, limit: Optional[int]) -> List:
 
 
 def process_results(results: Union[Generator, List], event: MISPEvent, comment: Optional[str],
-                    disable_output: bool = False):
+                    disable_output: bool = False) -> List[MISPObject]:
     """Processes VT results using the specific methods per VT object type."""
+    created_objects = []
     for result in results:
         if result["type"] == "file":
             if not disable_output:
                 print("[FILE] ", end='')
-            process_file(result["attributes"], event, comment, disable_output)
+            created_objects.append(process_file(result["attributes"], event, comment, disable_output))
         elif result["type"] == "url":
             if not disable_output:
                 print("[URL] ", end='')
-            process_url(result["attributes"], event, comment, disable_output)
+            created_objects.append(process_url(result["attributes"], event, comment, disable_output))
         elif result["type"] == "domain":
-            raise NotImplementedError("Processing domains is currently not implemented.")
-        elif result["type"] == "ip":
-            raise NotImplementedError("Processing IPs is currently not implemented.")
+            print_err("[DOMAIN] Processing domain objects is currently not supported.")
+            continue
+        elif result["type"] == "ip-address":
+            print_err("[IP] Processing IP objects is currently not supported.")
+            continue
         else:
-            raise ValueError(f"Unknown entity type: {result['type']}")
+            print_err(f"[ERR] Unknown entity type: {result['type']}")
+            continue
+    return created_objects
 
 
-def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False):
+def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
+                 disable_output: bool = False) -> MISPObject:
     """Adds files to MISP event as MISP objects."""
     sha256 = file.get("sha256", None)
     if not sha256:
@@ -55,7 +61,7 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None, di
     names = file.get("names", [])
     if len(names) > 0:
         for name in names:
-            f_obj.add_attribute("filename", name)
+            f_obj.add_attribute("filename", simple_value=name, to_ids=False)
 
     imp = file.get("pe_info", {}).get("imphash", None)
     if imp:
@@ -77,6 +83,8 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None, di
     if creation_date:
         creation_date = datetime.fromtimestamp(creation_date)
         f_obj.add_attribute("compilation-timestamp", type="datetime", value=creation_date)
+
+    return f_obj
 
 
 def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False):
@@ -100,6 +108,76 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
     u_obj.add_attribute("last-seen", type="datetime", value=datetime.fromtimestamp(url["last_submission_date"]))
 
 
+def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str]):
+    """Creates related objects based on given relation string."""
+    # Todo: Add additional relations
+    if len(relations_string) == 0:
+        return
+
+    if "," in relations_string:
+        relations = relations_string.split(",")
+    else:
+        relations = [relations_string]
+
+    file_relations = ["execution_parents", "bundled_files", "dropped_files"]
+
+    for rel in relations:
+        if rel not in file_relations:
+            print_err(f"[REL] Relation {rel} not implemented (yet).")
+            continue
+
+        for obj in objects:
+            r_objs = get_related_objects(api_key, obj, rel)
+            for r_obj_dict in r_objs:
+                if rel in file_relations:
+                    try:
+                        r_obj = process_file(
+                            file=r_obj_dict["attributes"],
+                            event=event,
+                            comment=f"Added via {rel} relation.",
+                            disable_output=True
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] File misses key {e}, skipping...")
+                        print(r_obj_dict)
+                        continue
+                    if rel == "execution_parents":
+                        r_obj.add_reference(obj.uuid, "executes")
+                    elif rel == "bundled_files":
+                        obj.add_reference(r_obj.uuid, "contains")
+                    elif rel == "dropped_files":
+                        obj.add_reference(r_obj.uuid, "drops")
+                    else:
+                        print(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
+                              f"Adding as generic \"related-to\".")
+                        r_obj.add_reference(obj.uuid, "related-to")
+
+
+def get_related_objects(api_key: str, obj: MISPObject, rel: str) -> List[Dict]:
+    """Gets related objects from VT."""
+    if obj.name == "file":
+        vt_id = obj.get_attributes_by_relation("sha256")[0].value
+    else:
+        print_err("[REL] Currently only file objects are supported.")
+        return []
+
+    print(f"[REL] Receiving {rel} for {vt_id}...")
+    with VTClient(api_key) as client:
+        res = client.get(f"/files/{vt_id}/{rel}").json()
+    files = []
+    for file in res.get("data", []):
+        if "error" in file:
+            print_err(f"[REL] File {file['id']} not available on VT.")
+        else:
+            files.append(file)
+    return files
+
+
+def print_err(*args, **kwargs):
+    """Wrapper for printing to stderr."""
+    print(*args, **kwargs, file=stderr)
+
+
 def cli():
     parser = ArgumentParser("vt2m")
     parser.add_argument("--uuid", "-u", type=str, required=True, help="MISP event uuid")
@@ -108,6 +186,8 @@ def cli():
     parser.add_argument("--vt-key", "-K", type=str, help="VT API key - can also be given as env VT_KEY")
     parser.add_argument("--comment", "-c", type=str, help="Comment to add to MISP objects")
     parser.add_argument("--limit", "-l", type=int, help="Limit results of VT query - default is 100")
+    parser.add_argument("--relations", "-r", type=str, help="Comma-seperated list of relations to request PER result "
+                                                            "(if type fits). This can burn your API credits.")
     parser.add_argument("query", type=str, help="VT query")
     args = parser.parse_args()
 
@@ -124,11 +204,12 @@ def cli():
         vtkey = os.getenv("VT_KEY", None)
 
     if not url or not key or not vtkey:
-        print("URL and key must be given either through param or env.", file=stderr)
+        print_err("URL and key must be given either through param or env.")
 
     misp = PyMISP(url, key)
     misp.global_pythonify = True
     event = misp.get_event(args.uuid)
     results = query(vtkey, args.query, args.limit)
-    process_results(results, event, args.comment)
+    created_objects = process_results(results, event, args.comment)
+    process_relations(vtkey, created_objects, event, args.relations)
     misp.update_event(event)

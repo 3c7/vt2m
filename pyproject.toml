@@ -9,7 +9,7 @@ license = "MIT"
 python = "^3.8"
 requests = "^2.27.1"
 vt-py = "^0.14.0"
-pymisp = "^2.4.155"
+pymisp = ">=2.4.155"
 
 [tool.poetry.dev-dependencies]
 
