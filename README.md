@@ -17,9 +17,12 @@ If you use the script frequently, passing the arguments as environment variables
 can be useful to save some time. For example, this can be achieved through creating a shell script which passes the
 environment variables and executes the command with spaces in front, so it does not show up in the shell history.
 
-Via `--relations` VirusTotal relations can be resolved and added as MISP objects with the specific relations, e.g.:
+Via `--relations` VirusTotal relations can be resolved and added as MISP objects with the specific relations, e.g. the
+following graph was created using vt2m:
 ![MISP Graph](.github/screenshots/graph.png)
+*Graph created via `vt2m --uuid <UUID> --limit 5 --relations dropped_files,execution_parents "behaviour_processes:\"ping -n 70\""`*
 
+### Params
 ```
 usage: vt2m [-h] --uuid UUID [--url URL] [--key KEY] [--vt-key VT_KEY] [--comment COMMENT] [--limit LIMIT] [--relations RELATIONS] query
 
