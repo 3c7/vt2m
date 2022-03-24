@@ -34,8 +34,7 @@ def process_results(results: Union[Generator, List], event: MISPEvent, comment: 
                 print("[URL] ", end='')
             created_objects.append(process_url(result["attributes"], event, comment, disable_output))
         elif result["type"] == "domain":
-            print_err("[DOMAIN] Processing domain objects is currently not supported.")
-            continue
+            created_objects.append(process_domain(result, event, comment))
         elif result["type"] == "ip-address":
             print_err("[IP] Processing IP objects is currently not supported.")
             continue
@@ -108,10 +107,37 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
     u_obj.add_attribute("last-seen", type="datetime", value=datetime.fromtimestamp(url["last_submission_date"]))
 
 
+def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None) -> MISPObject:
+    """Adds a domain object to a MISP event. Instead of the attributes sub-dictionary, this function needs the complete
+    VT object, in order to use the VT id."""
+    domain_name = domain.get("id", None)
+    if not domain_name:
+        raise KeyError("VirusTotal Domain object missing the ID.")
+
+    domain = domain["attributes"]
+
+    d_obj = event.add_object(name="domain-ip", comment=comment if comment else "")
+    d_obj.add_attribute("domain", simple_value=domain_name)
+
+    for record in domain.get("last_dns_records", []):
+        t = record.get("type", None)
+        if not t:
+            continue
+
+        if t == "NS":
+            d_obj.add_attribute("domain", simple_value=record["value"], comment="NS record", to_ids=False)
+        elif t == "A" or t == "AAAA":
+            d_obj.add_attribute("ip", type="ip-dst", value=record["value"])
+        elif t == "MX":
+            d_obj.add_attribute("domain", simple_value=record["value"], comment="MX record", to_ids=False)
+
+    return d_obj
+
+
 def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str]):
     """Creates related objects based on given relation string."""
     # Todo: Add additional relations
-    if len(relations_string) == 0:
+    if not relations_string or len(relations_string) == 0:
         return
 
     if "," in relations_string:
