@@ -26,12 +26,8 @@ def process_results(results: Union[Generator, List], event: MISPEvent, comment: 
     created_objects = []
     for result in results:
         if result["type"] == "file":
-            if not disable_output:
-                print("[FILE] ", end='')
             created_objects.append(process_file(result["attributes"], event, comment, disable_output))
         elif result["type"] == "url":
-            if not disable_output:
-                print("[URL] ", end='')
             created_objects.append(process_url(result["attributes"], event, comment, disable_output))
         elif result["type"] == "domain":
             created_objects.append(process_domain(result, event, comment))
@@ -51,7 +47,7 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     if not sha256:
         raise KeyError("VirusTotal file object misses sha256 hash. This should not happen.")
     if not disable_output:
-        print(f"Processing {sha256}...")
+        print(f"[FILE] Processing {sha256}...")
     f_obj = event.add_object(name="file", comment=comment if comment else "")
     f_obj.add_attribute("md5", simple_value=file["md5"])
     f_obj.add_attribute("sha1", simple_value=file["sha1"])
@@ -93,7 +89,7 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
         raise KeyError("VirusTotal URL object missing the actual URL.")
 
     if not disable_output:
-        print(f"Processing {url_string.replace('http', 'hxxp').replace('.', '[.]')}")
+        print(f"[URL] Processing {url_string.replace('http', 'hxxp').replace('.', '[.]')}")
     _, domain, resource_path, _, query_string, _ = urlparse(url_string)
     u_obj = event.add_object(name="url", comment=comment if comment else "")
     u_obj.add_attribute("url", simple_value=url_string)
@@ -107,12 +103,16 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
     u_obj.add_attribute("last-seen", type="datetime", value=datetime.fromtimestamp(url["last_submission_date"]))
 
 
-def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None) -> MISPObject:
+def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None,
+                   disable_output: bool = False) -> MISPObject:
     """Adds a domain object to a MISP event. Instead of the attributes sub-dictionary, this function needs the complete
     VT object, in order to use the VT id."""
     domain_name = domain.get("id", None)
     if not domain_name:
         raise KeyError("VirusTotal Domain object missing the ID.")
+
+    if not disable_output:
+        print(f"[DOMAIN] Processing {domain_name.replace('.', '[.]')}")
 
     domain = domain["attributes"]
 
@@ -134,7 +134,8 @@ def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None
     return d_obj
 
 
-def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str]):
+def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
+                      disable_output: bool = False):
     """Creates related objects based on given relation string."""
     # Todo: Add additional relations
     if not relations_string or len(relations_string) == 0:
@@ -153,7 +154,7 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
             continue
 
         for obj in objects:
-            r_objs = get_related_objects(api_key, obj, rel)
+            r_objs = get_related_objects(api_key, obj, rel, disable_output)
             for r_obj_dict in r_objs:
                 if rel in file_relations:
                     try:
@@ -165,7 +166,6 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                         )
                     except KeyError as e:
                         print_err(f"[ERR] File misses key {e}, skipping...")
-                        print(r_obj_dict)
                         continue
                     if rel == "execution_parents":
                         r_obj.add_reference(obj.uuid, "executes")
@@ -174,12 +174,12 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                     elif rel == "dropped_files":
                         obj.add_reference(r_obj.uuid, "drops")
                     else:
-                        print(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
-                              f"Adding as generic \"related-to\".")
+                        print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
+                                  f"Adding as generic \"related-to\".")
                         r_obj.add_reference(obj.uuid, "related-to")
 
 
-def get_related_objects(api_key: str, obj: MISPObject, rel: str) -> List[Dict]:
+def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output: bool = False) -> List[Dict]:
     """Gets related objects from VT."""
     if obj.name == "file":
         vt_id = obj.get_attributes_by_relation("sha256")[0].value
@@ -187,7 +187,9 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str) -> List[Dict]:
         print_err("[REL] Currently only file objects are supported.")
         return []
 
-    print(f"[REL] Receiving {rel} for {vt_id}...")
+    if not disable_output:
+        print(f"[REL] Receiving {rel} for {vt_id}...")
+
     with VTClient(api_key) as client:
         res = client.get(f"/files/{vt_id}/{rel}").json()
     files = []
@@ -216,6 +218,8 @@ def cli():
                                                             "(if type fits). This can burn your API credits. "
                                                             "Currently implemented: dropped_files, executing_parents, "
                                                             "bundled_files")
+    parser.add_argument("--quiet", "-q", action="store_true", default=False,
+                        help="Disable output. Stderr will still be printed.")
     parser.add_argument("query", type=str, help="VT query")
     args = parser.parse_args()
 
@@ -238,6 +242,6 @@ def cli():
     misp.global_pythonify = True
     event = misp.get_event(args.uuid)
     results = query(vtkey, args.query, args.limit)
-    created_objects = process_results(results, event, args.comment)
-    process_relations(vtkey, created_objects, event, args.relations)
+    created_objects = process_results(results, event, args.comment, args.quiet)
+    process_relations(vtkey, created_objects, event, args.relations, args.quiet)
     misp.update_event(event)
