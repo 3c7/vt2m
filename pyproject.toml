@@ -1,9 +1,32 @@
 [tool.poetry]
 name = "vt2m"
-version = "0.1.1"
+version = "0.1.2"
 description = "Automatically import results from VirusTotal queries into MISP objects"
 authors = ["3c7 <3c7@posteo.de>"]
 license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/3c7/vt2m"
+repository = "https://github.com/3c7/vt2m"
+classifiers = [
+    "Environment :: Console",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Security",
+    "Topic :: Utilities"
+]
+include = [
+    "LICENSE",
+    ".github/screenshots/*"
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"
