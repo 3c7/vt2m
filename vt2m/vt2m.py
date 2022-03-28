@@ -135,7 +135,7 @@ def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None
 
 
 def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
-                      disable_output: bool = False):
+                      detections: Optional[int], disable_output: bool = False):
     """Creates related objects based on given relation string."""
     # Todo: Add additional relations
     if not relations_string or len(relations_string) == 0:
@@ -158,6 +158,19 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
             for r_obj_dict in r_objs:
                 if rel in file_relations:
                     try:
+                        stats_malicious = r_obj_dict["attributes"].get("last_analysis_stats", {}).get("malicious", 0)
+                        if detections and isinstance(detections, int):
+                            if not isinstance(stats_malicious, int):
+                                print_err("[REL] Detection stats for are not given as integer therefore skipping the "
+                                          "check.")
+                            else:
+                                if stats_malicious < detections:
+                                    if not disable_output:
+                                        obj_id = r_obj_dict.get("id", "<NO ID GIVEN>").replace(".", "[.]")
+                                        print(f"[REL] Skipping {obj_id} because malicious detections are lower than "
+                                              f"{detections}.")
+                                    continue
+
                         r_obj = process_file(
                             file=r_obj_dict["attributes"],
                             event=event,
@@ -191,7 +204,7 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
         print(f"[REL] Receiving {rel} for {vt_id}...")
 
     with VTClient(api_key) as client:
-        res = client.get(f"/files/{vt_id}/{rel}").json()
+        res = client.get(f"/files/{vt_id}/{rel}?limit=100").json()
     files = []
     for file in res.get("data", []):
         if "error" in file:
@@ -220,6 +233,8 @@ def cli():
                                                             "bundled_files")
     parser.add_argument("--quiet", "-q", action="store_true", default=False,
                         help="Disable output. Stderr will still be printed.")
+    parser.add_argument("--detections", "-d", type=int, default=0,
+                        help="Only consider related entities with at least X malicious detections.")
     parser.add_argument("query", type=str, help="VT query")
     args = parser.parse_args()
 
@@ -241,7 +256,23 @@ def cli():
     misp = PyMISP(url, key)
     misp.global_pythonify = True
     event = misp.get_event(args.uuid)
-    results = query(vtkey, args.query, args.limit)
-    created_objects = process_results(results, event, args.comment, args.quiet)
-    process_relations(vtkey, created_objects, event, args.relations, args.quiet)
+    results = query(
+        api_key=vtkey,
+        query=args.query,
+        limit=args.limit
+    )
+    created_objects = process_results(
+        results=results,
+        event=event,
+        comment=args.comment,
+        disable_output=args.quiet
+    )
+    process_relations(
+        api_key=vtkey,
+        objects=created_objects,
+        event=event,
+        relations_string=args.relations,
+        detections=args.detections,
+        disable_output=args.quiet
+    )
     misp.update_event(event)
