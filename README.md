@@ -24,7 +24,9 @@ following graph was created using vt2m:
 
 ### Params
 ```
-usage: vt2m [-h] --uuid UUID [--url URL] [--key KEY] [--vt-key VT_KEY] [--comment COMMENT] [--limit LIMIT] [--relations RELATIONS] query
+usage: vt2m [-h] --uuid UUID [--url URL] [--key KEY] [--vt-key VT_KEY] [--comment COMMENT] [--limit LIMIT] [--relations RELATIONS] [--quiet]
+            [--detections DETECTIONS]
+            query
 
 positional arguments:
   query                 VT query
@@ -43,4 +45,7 @@ optional arguments:
   --relations RELATIONS, -r RELATIONS
                         Comma-seperated list of relations to request PER result (if type fits). This can burn your API credits. Currently
                         implemented: dropped_files, executing_parents, bundled_files
+  --quiet, -q           Disable output. Stderr will still be printed.
+  --detections DETECTIONS, -d DETECTIONS
+                        Only consider related entities with at least X malicious detections.
 ```
