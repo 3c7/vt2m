@@ -157,7 +157,7 @@ def get_object_if_available(event: MISPEvent, object_name: str, attribute_relati
         for attribute in attributes:
             if attribute.value == value:
                 value = value.replace("http", "hxxp").replace(".", "[.]")
-                print_err(f"[{object_name.upper()}] Object with value {value} already available.")
+                print_err(f"[{object_name.upper().split('-')[0]}] Object with value {value} already available.")
                 return obj
     return None
 
