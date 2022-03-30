@@ -199,15 +199,31 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                         print_err(f"[ERR] File misses key {e}, skipping...")
                         continue
                     if rel == "execution_parents":
-                        r_obj.add_reference(obj.uuid, "executes")
+                        add_reference(r_obj, obj.uuid, "executes")
                     elif rel == "bundled_files":
-                        obj.add_reference(r_obj.uuid, "contains")
+                        add_reference(obj, r_obj.uuid, "contains")
                     elif rel == "dropped_files":
-                        obj.add_reference(r_obj.uuid, "drops")
+                        add_reference(obj, r_obj.uuid, "drops")
                     else:
                         print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
                                   f"Adding as generic \"related-to\".")
                         r_obj.add_reference(obj.uuid, "related-to")
+
+
+def add_reference(obj: MISPObject, to_obj_uuid: str, relationship_type: str):
+    """Adds a reference, if not already available."""
+    if not reference_available(obj, to_obj_uuid, relationship_type):
+        obj.add_reference(to_obj_uuid, relationship_type)
+    else:
+        print_err(f"[REL] {obj.uuid} --{relationship_type}-> {to_obj_uuid} already available and therefore skipped.")
+
+
+def reference_available(obj: MISPObject, referenced_uuid: str, relationship_type: str) -> bool:
+    """Loops over given relationships and returns true if any relationship references the given uuid and type."""
+    for ref in obj.references:
+        if ref.referenced_uuid == referenced_uuid and ref.relationship_type == relationship_type:
+            return True
+    return False
 
 
 def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output: bool = False) -> List[Dict]:
