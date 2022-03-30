@@ -142,7 +142,7 @@ python-versions = ">=3.7"
 
 [[package]]
 name = "pymisp"
-version = "2.4.155.1"
+version = "2.4.157"
 description = "Python API for MISP."
 category = "main"
 optional = false
@@ -507,8 +507,8 @@ multidict = [
     {file = "multidict-6.0.2.tar.gz", hash = "sha256:5ff3bd75f38e4c43f1f470f2df7a4d430b821c4ce22be384e1459cb57d6bb013"},
 ]
 pymisp = [
-    {file = "pymisp-2.4.155.1-py3-none-any.whl", hash = "sha256:5701662c15ba983796be6ea9a0ac1263d9b06b804b112260589d35be1dd32eeb"},
-    {file = "pymisp-2.4.155.1.tar.gz", hash = "sha256:54133f133a8ca468b95b89317f42f527cb2cf5e049a187061c10be59fcb91ae5"},
+    {file = "pymisp-2.4.157-py3-none-any.whl", hash = "sha256:f3977d5f275e2917b651fc4e8a43920b8e38fbe21998e9798f24fef889a62814"},
+    {file = "pymisp-2.4.157.tar.gz", hash = "sha256:b19d6d565972b391f90e8fe7050101b3b84f45f83214d3bf9b339a6490856cf2"},
 ]
 pyrsistent = [
     {file = "pyrsistent-0.18.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:df46c854f490f81210870e509818b729db4488e1f30f2a1ce1698b2295a878d1"},
