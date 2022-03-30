@@ -48,6 +48,24 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
         raise KeyError("VirusTotal file object misses sha256 hash. This should not happen.")
     if not disable_output:
         print(f"[FILE] Processing {sha256}...")
+
+    # Loop through available objects and only add a file, if the object is not already available. In case the object is
+    # already available, return it.
+    obj_already_available = False
+    for obj in event.objects:
+        if obj.name != "file":
+            continue
+
+        attributes = obj.get_attributes_by_relation("sha256")
+        for attribute in attributes:
+            if attribute.value == sha256:
+                obj_already_available = True
+                break
+        if obj_already_available:
+            if not disable_output:
+                print(f"[FILE] {sha256} already available.")
+            return obj
+
     f_obj = event.add_object(name="file", comment=comment if comment else "")
     f_obj.add_attribute("md5", simple_value=file["md5"])
     f_obj.add_attribute("sha1", simple_value=file["sha1"])
