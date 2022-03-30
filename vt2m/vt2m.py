@@ -49,22 +49,9 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     if not disable_output:
         print(f"[FILE] Processing {sha256}...")
 
-    # Loop through available objects and only add a file, if the object is not already available. In case the object is
-    # already available, return it.
-    obj_already_available = False
-    for obj in event.objects:
-        if obj.name != "file":
-            continue
-
-        attributes = obj.get_attributes_by_relation("sha256")
-        for attribute in attributes:
-            if attribute.value == sha256:
-                obj_already_available = True
-                break
-        if obj_already_available:
-            if not disable_output:
-                print(f"[FILE] {sha256} already available.")
-            return obj
+    f_obj = get_object_if_available(event, "file", "sha256", sha256)
+    if f_obj:
+        return f_obj
 
     f_obj = event.add_object(name="file", comment=comment if comment else "")
     f_obj.add_attribute("md5", simple_value=file["md5"])
@@ -108,6 +95,11 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
 
     if not disable_output:
         print(f"[URL] Processing {url_string.replace('http', 'hxxp').replace('.', '[.]')}")
+
+    u_obj = get_object_if_available(event, "url", "url", url_string)
+    if u_obj:
+        return u_obj
+
     _, domain, resource_path, _, query_string, _ = urlparse(url_string)
     u_obj = event.add_object(name="url", comment=comment if comment else "")
     u_obj.add_attribute("url", simple_value=url_string)
@@ -132,6 +124,10 @@ def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None
     if not disable_output:
         print(f"[DOMAIN] Processing {domain_name.replace('.', '[.]')}")
 
+    d_obj = get_object_if_available(event, "domain-ip", "domain", domain_name)
+    if d_obj:
+        return d_obj
+
     domain = domain["attributes"]
 
     d_obj = event.add_object(name="domain-ip", comment=comment if comment else "")
@@ -150,6 +146,20 @@ def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None
             d_obj.add_attribute("domain", simple_value=record["value"], comment="MX record", to_ids=False)
 
     return d_obj
+
+
+def get_object_if_available(event: MISPEvent, object_name: str, attribute_relation: str,
+                            value: str) -> Union[MISPObject, None]:
+    """Returns an object if it's already available in the MISP event."""
+    objects = event.get_objects_by_name(object_name)
+    for obj in objects:
+        attributes = obj.get_attributes_by_relation(attribute_relation)
+        for attribute in attributes:
+            if attribute.value == value:
+                value = value.replace("http", "hxxp").replace(".", "[.]")
+                print_err(f"[{object_name.upper()}] Object with value {value} already available.")
+                return obj
+    return None
 
 
 def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
