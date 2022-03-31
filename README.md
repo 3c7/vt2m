@@ -1,4 +1,4 @@
-# VirusTotel Query to MISP Objects (vt2m)
+# VirusTotal Query to MISP Objects (vt2m)
 
 While there are multiple Python projects which implement the object creation based on single VirusTotal objects, this
 project aims to enable users to directly convert VirusTotal search queries to MISP objects.
