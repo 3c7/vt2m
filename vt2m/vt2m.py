@@ -175,30 +175,33 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
         relations = [relations_string]
 
     file_relations = ["execution_parents", "bundled_files", "dropped_files"]
+    url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
 
     for rel in relations:
-        if rel not in file_relations:
+        if rel not in file_relations and rel not in url_relations:
             print_err(f"[REL] Relation {rel} not implemented (yet).")
             continue
 
         for obj in objects:
             r_objs = get_related_objects(api_key, obj, rel, disable_output)
             for r_obj_dict in r_objs:
+                r_obj_id = r_obj_dict.get("id", "<NO ID GIVEN>").replace(".", "[.]")
+
+                # Check the detection
+                stats_malicious = r_obj_dict["attributes"].get("last_analysis_stats", {}).get("malicious", 0)
+                if detections and isinstance(detections, int):
+                    if not isinstance(stats_malicious, int):
+                        print_err("[REL] Detection stats for are not given as integer therefore skipping the "
+                                  "check.")
+                    else:
+                        if stats_malicious < detections:
+                            if not disable_output:
+                                print(f"[REL] Skipping {r_obj_id} because malicious detections are lower than "
+                                      f"{detections}.")
+                            continue
+
                 if rel in file_relations:
                     try:
-                        stats_malicious = r_obj_dict["attributes"].get("last_analysis_stats", {}).get("malicious", 0)
-                        if detections and isinstance(detections, int):
-                            if not isinstance(stats_malicious, int):
-                                print_err("[REL] Detection stats for are not given as integer therefore skipping the "
-                                          "check.")
-                            else:
-                                if stats_malicious < detections:
-                                    if not disable_output:
-                                        obj_id = r_obj_dict.get("id", "<NO ID GIVEN>").replace(".", "[.]")
-                                        print(f"[REL] Skipping {obj_id} because malicious detections are lower than "
-                                              f"{detections}.")
-                                    continue
-
                         r_obj = process_file(
                             file=r_obj_dict["attributes"],
                             event=event,
@@ -208,16 +211,42 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                     except KeyError as e:
                         print_err(f"[ERR] File misses key {e}, skipping...")
                         continue
+                elif rel in url_relations:
+                    try:
+                        r_obj = process_url(
+                            url=r_obj_dict["attributes"],
+                            event=event,
+                            comment=f"Added via {rel} relation.",
+                            disable_output=True
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] URL misses key {e}, skipping...")
+                        continue
+                else:
+                    print_err(f"Could not process returned object \"{r_obj_id}\".")
+                    continue
+
+                try:
                     if rel == "execution_parents":
                         add_reference(r_obj, obj.uuid, "executes")
                     elif rel == "bundled_files":
                         add_reference(obj, r_obj.uuid, "contains")
                     elif rel == "dropped_files":
                         add_reference(obj, r_obj.uuid, "drops")
+                    elif rel == "embedded_urls":
+                        add_reference(obj, r_obj.uuid, "contains")
+                    elif rel == "contacted_urls":
+                        add_reference(obj, r_obj.uuid, "contacts")
+                    elif rel == "itw_urls":
+                        add_reference(obj, r_obj.uuid, "downloaded-from")
                     else:
                         print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
                                   f"Adding as generic \"related-to\".")
                         r_obj.add_reference(obj.uuid, "related-to")
+                except AttributeError as ae:
+                    print_err(f"[ERR] Related object {r_obj_id} missing an attribute: {ae}")
+                    print_err(f"[ERR] Remote object dump:\n{r_obj.to_json()}")
+                    continue
 
 
 def add_reference(obj: MISPObject, to_obj_uuid: str, relationship_type: str):
