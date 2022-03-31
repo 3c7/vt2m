@@ -369,4 +369,5 @@ def cli():
         detections=args.detections,
         disable_output=args.quiet
     )
+    event.published = False
     misp.update_event(event)
