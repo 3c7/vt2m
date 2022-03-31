@@ -292,14 +292,20 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
         print(f"[REL] Receiving {rel} for {vt_id}...")
 
     with VTClient(api_key) as client:
-        res = client.get(f"/files/{vt_id}/{rel}?limit=100").json()
-    files = []
-    for file in res.get("data", []):
-        if "error" in file:
-            print_err(f"[REL] File {file['id']} not available on VT.")
+        res = client.get(f"/files/{vt_id}/{rel}?limit=40").json()
+    if "error" in res:
+        print_err(f"[REL] Error during receiving related objects: {res['error']}.")
+        return []
+
+    related_objects = []
+    for related_object in res.get("data", []):
+        if "error" in related_object:
+            print_err(f"[REL] File {related_object['id']} not available on VT.")
         else:
-            files.append(file)
-    return files
+            related_objects.append(related_object)
+    if not disable_output:
+        print(f"[REL] Got {len(related_objects)} {rel} objects.")
+    return related_objects
 
 
 def print_err(*args, **kwargs):
