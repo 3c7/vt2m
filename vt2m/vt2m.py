@@ -87,7 +87,7 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     return f_obj
 
 
-def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False):
+def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False) -> MISPObject:
     """Adds URLs to MISP event as MISP objects."""
     url_string = url.get("url", None)
     if not url_string:
@@ -111,6 +111,7 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
 
     u_obj.add_attribute("first-seen", type="datetime", value=datetime.fromtimestamp(url["first_submission_date"]))
     u_obj.add_attribute("last-seen", type="datetime", value=datetime.fromtimestamp(url["last_submission_date"]))
+    return u_obj
 
 
 def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None,
@@ -223,7 +224,7 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                         print_err(f"[ERR] URL misses key {e}, skipping...")
                         continue
                 else:
-                    print_err(f"Could not process returned object \"{r_obj_id}\".")
+                    print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
                     continue
 
                 try:
@@ -245,7 +246,9 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                         r_obj.add_reference(obj.uuid, "related-to")
                 except AttributeError as ae:
                     print_err(f"[ERR] Related object {r_obj_id} missing an attribute: {ae}")
-                    print_err(f"[ERR] Remote object dump:\n{r_obj.to_json()}")
+                    # If the related object is not none, let's dump it to see what's wrong
+                    if r_obj:
+                        print_err(f"[ERR] Remote object dump:\n{r_obj.to_json()}")
                     continue
 
 
