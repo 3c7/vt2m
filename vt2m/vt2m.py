@@ -177,9 +177,10 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
 
     file_relations = ["execution_parents", "bundled_files", "dropped_files"]
     url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
+    domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
 
     for rel in relations:
-        if rel not in file_relations and rel not in url_relations:
+        if rel not in file_relations and rel not in url_relations and rel not in domain_relations:
             print_err(f"[REL] Relation {rel} not implemented (yet).")
             continue
 
@@ -223,6 +224,17 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                     except KeyError as e:
                         print_err(f"[ERR] URL misses key {e}, skipping...")
                         continue
+                elif rel in domain_relations:
+                    try:
+                        r_obj = process_domain(
+                            domain=r_obj_dict,
+                            event=event,
+                            comment=f"Added via {rel} relation.",
+                            disable_output=True
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] URL misses key {e}, skipping...")
+                        continue
                 else:
                     print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
                     continue
@@ -234,11 +246,11 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                         add_reference(obj, r_obj.uuid, "contains")
                     elif rel == "dropped_files":
                         add_reference(obj, r_obj.uuid, "drops")
-                    elif rel == "embedded_urls":
+                    elif "embedded_" in rel:
                         add_reference(obj, r_obj.uuid, "contains")
-                    elif rel == "contacted_urls":
+                    elif "contacted_" in rel:
                         add_reference(obj, r_obj.uuid, "contacts")
-                    elif rel == "itw_urls":
+                    elif "itw_" in rel:
                         add_reference(obj, r_obj.uuid, "downloaded-from")
                     else:
                         print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
