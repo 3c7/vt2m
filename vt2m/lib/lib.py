@@ -1,15 +1,27 @@
-import os
-from argparse import ArgumentParser
 from datetime import datetime
-from sys import stderr
 from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
 
-from pymisp import PyMISP, MISPEvent, MISPObject
+import requests
+import typer
+from pymisp import MISPEvent, MISPObject
 from vt import Client as VTClient
 
 
-def query(api_key: str, query: str, limit: Optional[int]) -> List:
+def vt_request(api_key: str, url: str):
+    """Use this instead of the VT API client."""
+    headers = {
+        "Accept": "application/json",
+        "x-apikey": api_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code > 302:
+        print_err("[WARN] Status code received from VT API is > 302.")
+
+    return response.json()
+
+
+def vt_query(api_key: str, query: str, limit: Optional[int]) -> List:
     """Queries VT API and yields a list of results."""
     if not limit:
         limit = 100
@@ -308,66 +320,32 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
     return related_objects
 
 
-def print_err(*args, **kwargs):
+def print_err(s):
     """Wrapper for printing to stderr."""
-    print(*args, **kwargs, file=stderr)
+    if s[:5] == "[ERR]":
+        s = typer.style("[ERR]", fg="red") + s[5:]
+    elif s[:6] == "[WARN]":
+        s = typer.style("[WARN]", fg="yellow") + s[6:]
+    print(s, err=True)
 
 
-def cli():
-    parser = ArgumentParser("vt2m")
-    parser.add_argument("--uuid", "-u", type=str, required=True, help="MISP event uuid")
-    parser.add_argument("--url", "-U", type=str, help="MISP URL - can also be given as env MISP_URL")
-    parser.add_argument("--key", "-k", type=str, help="MISP API key - can also be given as env MISP_KEY")
-    parser.add_argument("--vt-key", "-K", type=str, help="VT API key - can also be given as env VT_KEY")
-    parser.add_argument("--comment", "-c", type=str, help="Comment to add to MISP objects")
-    parser.add_argument("--limit", "-l", type=int, help="Limit results of VT query - default is 100")
-    parser.add_argument("--relations", "-r", type=str, help="Comma-seperated list of relations to request PER result "
-                                                            "(if type fits). This can burn your API credits. "
-                                                            "Currently implemented: dropped_files, executing_parents, "
-                                                            "bundled_files")
-    parser.add_argument("--quiet", "-q", action="store_true", default=False,
-                        help="Disable output. Stderr will still be printed.")
-    parser.add_argument("--detections", "-d", type=int, default=0,
-                        help="Only consider related entities with at least X malicious detections.")
-    parser.add_argument("query", type=str, help="VT query")
-    args = parser.parse_args()
+def print(*args, **kwargs):
+    """Wraps typer.echo for proper console output."""
+    typer.echo(*args, **kwargs)
 
-    url = args.url
-    if not url:
-        url = os.getenv("MISP_URL", None)
 
-    key = args.key
-    if not key:
-        key = os.getenv("MISP_KEY", None)
+def get_vt_notifications(
+        vt_key: str,
+        filter: Optional[str] = None,
+        limit: int = 10
+) -> Dict:
+    """Requests notifications from VT API."""
+    url = f"https://www.virustotal.com/api/v3/intelligence/hunting_notification_files?limit={limit}"
+    if filter:
+        url += f"&filter={quote_plus(filter)}"
 
-    vtkey = args.vt_key
-    if not vtkey:
-        vtkey = os.getenv("VT_KEY", None)
-
-    if not url or not key or not vtkey:
-        print_err("URL and key must be given either through param or env.")
-
-    misp = PyMISP(url, key)
-    misp.global_pythonify = True
-    event = misp.get_event(args.uuid)
-    results = query(
-        api_key=vtkey,
-        query=args.query,
-        limit=args.limit
-    )
-    created_objects = process_results(
-        results=results,
-        event=event,
-        comment=args.comment,
-        disable_output=args.quiet
-    )
-    process_relations(
-        api_key=vtkey,
-        objects=created_objects,
-        event=event,
-        relations_string=args.relations,
-        detections=args.detections,
-        disable_output=args.quiet
-    )
-    event.published = False
-    misp.update_event(event)
+    data = vt_request(api_key=vt_key, url=url)
+    if "error" in data:
+        print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+        return {}
+    return data["data"]
