@@ -5,6 +5,7 @@ from pymisp import PyMISP
 from typer import Typer, Option, Argument
 
 from vt2m.lib import lib
+from vt2m.subcommands import notifications
 
 app = Typer()
 state = {
@@ -67,6 +68,8 @@ def query(
 def callback(quiet: bool = Option(False, is_flag=True, help="No output except stderr")):
     state["quiet"] = quiet
 
+
+app.add_typer(notifications.app, name="notifications")
 
 if __name__ == "__main__":
     app()

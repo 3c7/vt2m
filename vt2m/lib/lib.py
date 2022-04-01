@@ -2,9 +2,23 @@ from datetime import datetime
 from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
 
+import requests
 import typer
 from pymisp import MISPEvent, MISPObject
 from vt import Client as VTClient
+
+
+def vt_request(api_key: str, url: str):
+    """Use this instead of the VT API client."""
+    headers = {
+        "Accept": "application/json",
+        "x-apikey": api_key
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code > 302:
+        print_err("[WARN] Status code received from VT API is > 302.")
+
+    return response.json()
 
 
 def vt_query(api_key: str, query: str, limit: Optional[int]) -> List:
@@ -318,3 +332,20 @@ def print_err(s):
 def print(*args, **kwargs):
     """Wraps typer.echo for proper console output."""
     typer.echo(*args, **kwargs)
+
+
+def get_vt_notifications(
+        vt_key: str,
+        filter: Optional[str] = None,
+        limit: int = 10
+) -> Dict:
+    """Requests notifications from VT API."""
+    url = f"https://www.virustotal.com/api/v3/intelligence/hunting_notification_files?limit={limit}"
+    if filter:
+        url += f"&filter={quote_plus(filter)}"
+
+    data = vt_request(api_key=vt_key, url=url)
+    if "error" in data:
+        print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+        return {}
+    return data["data"]
