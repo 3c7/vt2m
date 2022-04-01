@@ -87,7 +87,7 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     return f_obj
 
 
-def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False):
+def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False) -> MISPObject:
     """Adds URLs to MISP event as MISP objects."""
     url_string = url.get("url", None)
     if not url_string:
@@ -111,6 +111,7 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
 
     u_obj.add_attribute("first-seen", type="datetime", value=datetime.fromtimestamp(url["first_submission_date"]))
     u_obj.add_attribute("last-seen", type="datetime", value=datetime.fromtimestamp(url["last_submission_date"]))
+    return u_obj
 
 
 def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None,
@@ -175,30 +176,34 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
         relations = [relations_string]
 
     file_relations = ["execution_parents", "bundled_files", "dropped_files"]
+    url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
+    domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
 
     for rel in relations:
-        if rel not in file_relations:
+        if rel not in file_relations and rel not in url_relations and rel not in domain_relations:
             print_err(f"[REL] Relation {rel} not implemented (yet).")
             continue
 
         for obj in objects:
             r_objs = get_related_objects(api_key, obj, rel, disable_output)
             for r_obj_dict in r_objs:
+                r_obj_id = r_obj_dict.get("id", "<NO ID GIVEN>").replace(".", "[.]")
+
+                # Check the detection
+                stats_malicious = r_obj_dict["attributes"].get("last_analysis_stats", {}).get("malicious", 0)
+                if detections and isinstance(detections, int):
+                    if not isinstance(stats_malicious, int):
+                        print_err("[REL] Detection stats for are not given as integer therefore skipping the "
+                                  "check.")
+                    else:
+                        if stats_malicious < detections:
+                            if not disable_output:
+                                print(f"[REL] Skipping {r_obj_id} because malicious detections are lower than "
+                                      f"{detections}.")
+                            continue
+
                 if rel in file_relations:
                     try:
-                        stats_malicious = r_obj_dict["attributes"].get("last_analysis_stats", {}).get("malicious", 0)
-                        if detections and isinstance(detections, int):
-                            if not isinstance(stats_malicious, int):
-                                print_err("[REL] Detection stats for are not given as integer therefore skipping the "
-                                          "check.")
-                            else:
-                                if stats_malicious < detections:
-                                    if not disable_output:
-                                        obj_id = r_obj_dict.get("id", "<NO ID GIVEN>").replace(".", "[.]")
-                                        print(f"[REL] Skipping {obj_id} because malicious detections are lower than "
-                                              f"{detections}.")
-                                    continue
-
                         r_obj = process_file(
                             file=r_obj_dict["attributes"],
                             event=event,
@@ -208,16 +213,55 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                     except KeyError as e:
                         print_err(f"[ERR] File misses key {e}, skipping...")
                         continue
+                elif rel in url_relations:
+                    try:
+                        r_obj = process_url(
+                            url=r_obj_dict["attributes"],
+                            event=event,
+                            comment=f"Added via {rel} relation.",
+                            disable_output=True
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] URL misses key {e}, skipping...")
+                        continue
+                elif rel in domain_relations:
+                    try:
+                        r_obj = process_domain(
+                            domain=r_obj_dict,
+                            event=event,
+                            comment=f"Added via {rel} relation.",
+                            disable_output=True
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] URL misses key {e}, skipping...")
+                        continue
+                else:
+                    print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
+                    continue
+
+                try:
                     if rel == "execution_parents":
                         add_reference(r_obj, obj.uuid, "executes")
                     elif rel == "bundled_files":
                         add_reference(obj, r_obj.uuid, "contains")
                     elif rel == "dropped_files":
                         add_reference(obj, r_obj.uuid, "drops")
+                    elif "embedded_" in rel:
+                        add_reference(obj, r_obj.uuid, "contains")
+                    elif "contacted_" in rel:
+                        add_reference(obj, r_obj.uuid, "contacts")
+                    elif "itw_" in rel:
+                        add_reference(obj, r_obj.uuid, "downloaded-from")
                     else:
                         print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
                                   f"Adding as generic \"related-to\".")
                         r_obj.add_reference(obj.uuid, "related-to")
+                except AttributeError as ae:
+                    print_err(f"[ERR] Related object {r_obj_id} missing an attribute: {ae}")
+                    # If the related object is not none, let's dump it to see what's wrong
+                    if r_obj:
+                        print_err(f"[ERR] Remote object dump:\n{r_obj.to_json()}")
+                    continue
 
 
 def add_reference(obj: MISPObject, to_obj_uuid: str, relationship_type: str):
@@ -248,14 +292,20 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
         print(f"[REL] Receiving {rel} for {vt_id}...")
 
     with VTClient(api_key) as client:
-        res = client.get(f"/files/{vt_id}/{rel}?limit=100").json()
-    files = []
-    for file in res.get("data", []):
-        if "error" in file:
-            print_err(f"[REL] File {file['id']} not available on VT.")
+        res = client.get(f"/files/{vt_id}/{rel}?limit=40").json()
+    if "error" in res:
+        print_err(f"[REL] Error during receiving related objects: {res['error']}.")
+        return []
+
+    related_objects = []
+    for related_object in res.get("data", []):
+        if "error" in related_object:
+            print_err(f"[REL] File {related_object['id']} not available on VT.")
         else:
-            files.append(file)
-    return files
+            related_objects.append(related_object)
+    if not disable_output:
+        print(f"[REL] Got {len(related_objects)} {rel} objects.")
+    return related_objects
 
 
 def print_err(*args, **kwargs):
@@ -319,4 +369,5 @@ def cli():
         detections=args.detections,
         disable_output=args.quiet
     )
+    event.published = False
     misp.update_event(event)
