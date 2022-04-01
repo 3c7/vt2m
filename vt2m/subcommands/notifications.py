@@ -4,7 +4,7 @@ from datetime import datetime
 
 from vt2m.lib.lib import print, print_err, get_vt_notifications
 
-app = typer.Typer()
+app = typer.Typer(help="Query and process VT notifications")
 
 
 @app.command("list")
@@ -13,6 +13,9 @@ def list_notifications(
         filter: str = typer.Option("", help="Filter to be used for filtering notifications"),
         limit: int = typer.Option(10, help="Amount of notifications to grab")
 ):
+    """
+    List currently available VirusTotal notifications and filter them using --filter.
+    """
     if not vt_key:
         vt_key = os.getenv("VT_KEY")
 

@@ -26,6 +26,9 @@ def query(
         relations: str = Option("", help="Relations to resolve via VirusTotal"),
         detections: int = Option(0, help="Amount of detections a related VirusTotal object must at least have")
 ):
+    """
+    Query VT for files and add them to a MISP event
+    """
     if not url:
         url = os.getenv("MISP_URL", None)
 
