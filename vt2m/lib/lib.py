@@ -3,9 +3,10 @@ from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
 
 import requests
-import typer
 from pymisp import MISPEvent, MISPObject
 from vt import Client as VTClient
+
+from vt2m.lib.output import print, print_err
 
 
 def vt_request(api_key: str, url: str):
@@ -318,20 +319,6 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
     if not disable_output:
         print(f"[REL] Got {len(related_objects)} {rel} objects.")
     return related_objects
-
-
-def print_err(s):
-    """Wrapper for printing to stderr."""
-    if s[:5] == "[ERR]":
-        s = typer.style("[ERR]", fg="red") + s[5:]
-    elif s[:6] == "[WARN]":
-        s = typer.style("[WARN]", fg="yellow") + s[6:]
-    print(s, err=True)
-
-
-def print(*args, **kwargs):
-    """Wraps typer.echo for proper console output."""
-    typer.echo(*args, **kwargs)
 
 
 def get_vt_notifications(

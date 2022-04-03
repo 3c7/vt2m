@@ -1,8 +1,9 @@
-import typer
 import os
-from datetime import datetime
+
+import typer
 
 from vt2m.lib.lib import print, print_err, get_vt_notifications
+from vt2m.lib.output import print_file_object
 
 app = typer.Typer(help="Query and process VT notifications")
 
@@ -11,7 +12,8 @@ app = typer.Typer(help="Query and process VT notifications")
 def list_notifications(
         vt_key: str = typer.Option(None, help="VT API Key - can also be set via VT_KEY env"),
         filter: str = typer.Option("", help="Filter to be used for filtering notifications"),
-        limit: int = typer.Option(10, help="Amount of notifications to grab")
+        limit: int = typer.Option(10, help="Amount of notifications to grab"),
+        sha256: bool = typer.Option(False, "-s", "--sha256", help="Only show sha256 hashes")
 ):
     """
     List currently available VirusTotal notifications and filter them using --filter.
@@ -28,11 +30,21 @@ def list_notifications(
         filter=filter,
         limit=limit
     )
-    print(f"{'Rule':<40} | {'Submission Date':<30} | SHA256 Hash")
+
+    if len(notifications) == 0:
+        print_err("[WARN] No notifications found.")
+        raise typer.Exit(1)
+
+    if not sha256:
+        print(f"{'Rule':<40}{'Submission Date':<30}SHA256 Hash")
+
     for notification in notifications:
-        rule = notification.get("context_attributes", {}).get("rule_name", None)
-        date = notification.get("context_attributes", {}).get("notification_date", None)
-        sha256 = notification.get("attributes", {}).get("sha256", None)
-        if date:
-            date = datetime.fromtimestamp(date)
-        print(f"{rule:<40} | {date.isoformat():<30} | {sha256}")
+        if sha256:
+            print_file_object(notification, "attributes.sha256")
+        else:
+            print_file_object(
+                notification,
+                "context_attributes.rule_name,40",
+                "attributes.first_submission_date,30",
+                "attributes.sha256"
+            )
