@@ -188,7 +188,7 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
     else:
         relations = [relations_string]
 
-    file_relations = ["execution_parents", "bundled_files", "dropped_files"]
+    file_relations = ["execution_parents", "compressed_parents", "bundled_files", "dropped_files"]
     url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
     domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
 
@@ -255,6 +255,8 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                 try:
                     if rel == "execution_parents":
                         add_reference(r_obj, obj.uuid, "executes")
+                    elif rel == "compressed_parents":
+                        add_reference(r_obj, obj.uuid, "contains")
                     elif rel == "bundled_files":
                         add_reference(obj, r_obj.uuid, "contains")
                     elif rel == "dropped_files":
