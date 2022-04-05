@@ -24,7 +24,8 @@ def query(
         comment: str = Option("", help="Comment for new MISP objects."),
         limit: int = Option(100, help="Limit of VirusTotal objects to receive"),
         relations: str = Option("", help="Relations to resolve via VirusTotal"),
-        detections: int = Option(0, help="Amount of detections a related VirusTotal object must at least have")
+        detections: int = Option(0, help="Amount of detections a related VirusTotal object must at least have"),
+        extract_domains: bool = Option(False, help="Extract domains from URL objects and add them as related object.")
 ):
     """
     Query VT for files and add them to a MISP event
@@ -53,7 +54,8 @@ def query(
         results=results,
         event=event,
         comment=comment,
-        disable_output=state["quiet"]
+        disable_output=state["quiet"],
+        extract_domains=extract_domains
     )
     lib.process_relations(
         api_key=vt_key,
@@ -61,7 +63,8 @@ def query(
         event=event,
         relations_string=relations,
         detections=detections,
-        disable_output=state["quiet"]
+        disable_output=state["quiet"],
+        extract_domains=extract_domains
     )
     event.published = False
     misp.update_event(event)

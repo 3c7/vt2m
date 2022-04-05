@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
@@ -34,16 +35,37 @@ def vt_query(api_key: str, query: str, limit: Optional[int]) -> List:
 
 
 def process_results(results: Union[Generator, List], event: MISPEvent, comment: Optional[str],
-                    disable_output: bool = False) -> List[MISPObject]:
+                    disable_output: bool = False, extract_domains: bool = False) -> List[MISPObject]:
     """Processes VT results using the specific methods per VT object type."""
     created_objects = []
     for result in results:
         if result["type"] == "file":
-            created_objects.append(process_file(result["attributes"], event, comment, disable_output))
+            created_objects.append(
+                process_file(
+                    file=result["attributes"],
+                    event=event,comment=comment,
+                    disable_output=disable_output
+                )
+            )
         elif result["type"] == "url":
-            created_objects.append(process_url(result["attributes"], event, comment, disable_output))
+            created_objects.append(
+                process_url(
+                    url=result["attributes"],
+                    event=event,
+                    comment=comment,
+                    disable_output=disable_output,
+                    extract_domain=extract_domains
+                )
+            )
         elif result["type"] == "domain":
-            created_objects.append(process_domain(result, event, comment))
+            created_objects.append(
+                process_domain(
+                    domain=result,
+                    event=event,
+                    comment=comment,
+                    disable_output=disable_output
+                )
+            )
         elif result["type"] == "ip-address":
             print_err("[IP] Processing IP objects is currently not supported.")
             continue
@@ -100,7 +122,8 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     return f_obj
 
 
-def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False) -> MISPObject:
+def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False,
+                extract_domain: bool = False) -> MISPObject:
     """Adds URLs to MISP event as MISP objects."""
     url_string = url.get("url", None)
     if not url_string:
@@ -109,11 +132,18 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
     if not disable_output:
         print(f"[URL] Processing {url_string.replace('http', 'hxxp').replace('.', '[.]')}")
 
+    _, domain, resource_path, _, query_string, _ = urlparse(url_string)
+    port = None
+    if domain.count(":") == 1:
+        ip, port = domain.split(":")
+        if 0 < int(port, base=10) < 65536:
+            domain = ip
     u_obj = get_object_if_available(event, "url", "url", url_string)
     if u_obj:
+        if extract_domain:
+            create_domain_from_url(event, domain, u_obj, disable_output)
         return u_obj
 
-    _, domain, resource_path, _, query_string, _ = urlparse(url_string)
     u_obj = event.add_object(name="url", comment=comment if comment else "")
     u_obj.add_attribute("url", simple_value=url_string)
     u_obj.add_attribute("domain", simple_value=domain, to_ids=False)
@@ -121,9 +151,14 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
         u_obj.add_attribute("resource_path", simple_value=resource_path)
     if query_string:
         u_obj.add_attribute("query_string", simple_value=query_string)
+    if port:
+        u_obj.add_attribute("port", simple_value=port)
 
     u_obj.add_attribute("first-seen", type="datetime", value=datetime.fromtimestamp(url["first_submission_date"]))
     u_obj.add_attribute("last-seen", type="datetime", value=datetime.fromtimestamp(url["last_submission_date"]))
+
+    if extract_domain:
+        create_domain_from_url(event, domain, u_obj, disable_output)
     return u_obj
 
 
@@ -177,7 +212,7 @@ def get_object_if_available(event: MISPEvent, object_name: str, attribute_relati
 
 
 def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
-                      detections: Optional[int], disable_output: bool = False):
+                      detections: Optional[int], disable_output: bool = False, extract_domains: bool = False):
     """Creates related objects based on given relation string."""
     # Todo: Add additional relations
     if not relations_string or len(relations_string) == 0:
@@ -232,7 +267,8 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                             url=r_obj_dict["attributes"],
                             event=event,
                             comment=f"Added via {rel} relation.",
-                            disable_output=True
+                            disable_output=True,
+                            extract_domain=extract_domains
                         )
                     except KeyError as e:
                         print_err(f"[ERR] URL misses key {e}, skipping...")
@@ -328,7 +364,7 @@ def get_vt_notifications(
         filter: Optional[str] = None,
         limit: int = 10
 ) -> Dict:
-    """Requests notifications from VT API."""
+    """Requests notifications from VT API. Applies an optional filter."""
     url = f"https://www.virustotal.com/api/v3/intelligence/hunting_notification_files?limit={limit}"
     if filter:
         url += f"&filter={quote_plus(filter)}"
@@ -338,3 +374,50 @@ def get_vt_notifications(
         print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
         return {}
     return data["data"]
+
+
+def create_domain_from_url(event: MISPEvent, domain: str, u_obj: MISPObject, disable_output: bool = False):
+    """Creates domain object from url object and adds a relation."""
+    if domain and len(domain) > 0:
+        if re.fullmatch(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}", domain):
+            attribute_type = "ip"
+        elif ":" in domain:
+            attribute_type = "ip"
+        else:
+            attribute_type = "domain"
+
+        d_obj = get_object_if_available(event, "domain-ip", attribute_type, domain)
+        if not d_obj:
+            d_obj = event.add_object(name="domain-ip", comment=f"Extracted {attribute_type}")
+            d_obj.add_attribute(attribute_type, simple_value=domain)
+        add_reference(u_obj, d_obj.uuid, "contains")
+        if not disable_output:
+            print(f"[REL] Extracted {attribute_type} from {object_represent_string(u_obj)}.")
+
+
+def object_represent_string(obj: MISPObject, include_uuid: bool = False) -> str:
+    """Returns a string which represents the object."""
+    if obj.name == "file":
+        repr = obj.get_attributes_by_relation("sha256").pop()
+    elif obj.name == "domain-ip":
+        repr = obj.get_attributes_by_relation("domain").pop()
+        if not repr:
+            repr = obj.get_attributes_by_relation("ip").pop()
+    elif obj.name == "url":
+        repr = obj.get_attributes_by_relation("url").pop()
+    else:
+        s = f"[ERR] Given object name/type unknown: {obj.name}."
+        print_err(s)
+        raise TypeError(s)
+
+    if not repr:
+        s = f"[ERR] Given object does not include its representative attribute: {obj.to_json()}"
+        print_err(s)
+        raise KeyError(s)
+
+    defanged = repr.value.replace("http", "hxxp").replace(".", "[.]")
+
+    if include_uuid:
+        return defanged + "(" + obj.uuid + ")"
+
+    return defanged
