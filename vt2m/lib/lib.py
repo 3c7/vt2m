@@ -214,6 +214,10 @@ def process_ip(ip: Dict, event: MISPEvent, comment: Optional[str] = None, disabl
     if not disable_output:
         print(f"[IP] Processing {ip_str.replace('.', '[.]')}.")
 
+    i_obj = get_object_if_available(event, "domain-ip", "ip", ip_str)
+    if i_obj:
+        return i_obj
+
     ip = ip["attributes"]
 
     i_obj = event.add_object(name="domain-ip", comment=comment if comment else "")
