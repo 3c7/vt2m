@@ -1,10 +1,10 @@
 import os
 
-import typer
 from pymisp import PyMISP
 from typer import Typer, Option, Argument
 
 from vt2m.lib import lib
+from vt2m.lib.output import print_err
 from vt2m.subcommands import notifications
 
 app = Typer()
@@ -40,7 +40,7 @@ def query(
         vt_key = os.getenv("VT_KEY", None)
 
     if not url or not key or not vt_key:
-        typer.echo("URL and key must be given either through param or env.", err=True)
+        print_err("[ERR] URL and key must be given either through param or env.")
 
     misp = PyMISP(url, key)
     misp.global_pythonify = True

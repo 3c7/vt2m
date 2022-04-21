@@ -43,7 +43,8 @@ def process_results(results: Union[Generator, List], event: MISPEvent, comment: 
             created_objects.append(
                 process_file(
                     file=result["attributes"],
-                    event=event,comment=comment,
+                    event=event,
+                    comment=comment,
                     disable_output=disable_output
                 )
             )
@@ -67,8 +68,14 @@ def process_results(results: Union[Generator, List], event: MISPEvent, comment: 
                 )
             )
         elif result["type"] == "ip-address":
-            print_err("[IP] Processing IP objects is currently not supported.")
-            continue
+            created_objects.append(
+                process_ip(
+                    ip=result,
+                    event=event,
+                    comment=comment,
+                    disable_output=disable_output
+                )
+            )
         else:
             print_err(f"[ERR] Unknown entity type: {result['type']}")
             continue
@@ -197,6 +204,34 @@ def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None
     return d_obj
 
 
+def process_ip(ip: Dict, event: MISPEvent, comment: Optional[str] = None, disable_output: bool = False) -> MISPObject:
+    """Adds a domain-ip object to the MISP event. Instead of the attributes sub-dictionary, this function needs the
+    complete VT object, in order to use the VT id. """
+    ip_str = ip.get("id", None)
+    if not ip_str:
+        raise KeyError("VirusTotal IP object missing the ID.")
+
+    if not disable_output:
+        print(f"[IP] Processing {ip_str.replace('.', '[.]')}.")
+
+    ip = ip["attributes"]
+
+    i_obj = event.add_object(name="domain-ip", comment=comment if comment else "")
+    i_obj.add_attribute("ip", type="ip-dst", value=ip_str)
+    i_obj.add_attribute("text", simple_value=f"AS: {ip.get('as_owner', 'not available')}")
+
+    cert = ip.get("last_https_certificate", None)
+    if cert:
+        cn = cert.get("subject", {}).get("CN", None)
+        if cn:
+            i_obj.add_attribute("domain", type="domain", value=cn, comment="Certificate Subject Common Name")
+
+        for alt in cert.get("extensions", {}).get("subject_alternative_name", []):
+            i_obj.add_attribute("domain", type="domain", value=alt, comment="Certificate Subject Alternative Name")
+
+    return i_obj
+
+
 def get_object_if_available(event: MISPEvent, object_name: str, attribute_relation: str,
                             value: str) -> Union[MISPObject, None]:
     """Returns an object if it's already available in the MISP event."""
@@ -226,6 +261,7 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
     file_relations = ["execution_parents", "compressed_parents", "bundled_files", "dropped_files"]
     url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
     domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
+    ip_relations = ["contacted_ips", "embedded_ips", "itw_ips"]
 
     for rel in relations:
         if rel not in file_relations and rel not in url_relations and rel not in domain_relations:
@@ -282,8 +318,18 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                             disable_output=True
                         )
                     except KeyError as e:
-                        print_err(f"[ERR] URL misses key {e}, skipping...")
+                        print_err(f"[ERR] Domain misses key {e}, skipping...")
                         continue
+                elif rel in ip_relations:
+                    try:
+                        r_obj = process_ip(
+                            ip=r_obj_dict,
+                            event=event,
+                            comment=f"Added via {rel} relation.",
+                            disable_output=True
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] IP misses key {e}, skipping...")
                 else:
                     print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
                     continue
@@ -363,7 +409,7 @@ def get_vt_notifications(
         vt_key: str,
         filter: Optional[str] = None,
         limit: int = 10
-) -> Dict:
+) -> List:
     """Requests notifications from VT API. Applies an optional filter."""
     url = f"https://www.virustotal.com/api/v3/intelligence/hunting_notification_files?limit={limit}"
     if filter:
@@ -372,7 +418,7 @@ def get_vt_notifications(
     data = vt_request(api_key=vt_key, url=url)
     if "error" in data:
         print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
-        return {}
+        return []
     return data["data"]
 
 
