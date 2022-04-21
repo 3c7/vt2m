@@ -1,4 +1,5 @@
 import re
+import json
 from datetime import datetime
 from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
@@ -251,7 +252,8 @@ def get_object_if_available(event: MISPEvent, object_name: str, attribute_relati
 
 
 def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
-                      detections: Optional[int], disable_output: bool = False, extract_domains: bool = False):
+                      detections: Optional[int], disable_output: bool = False, extract_domains: bool = False,
+                      filter=None):
     """Creates related objects based on given relation string."""
     # Todo: Add additional relations
     if not relations_string or len(relations_string) == 0:
@@ -275,7 +277,19 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
 
         for obj in objects:
             r_objs = get_related_objects(api_key, obj, rel, disable_output)
+            filtered = False
             for r_obj_dict in r_objs:
+                if filter:
+                    json_string = json.dumps(r_obj_dict)
+                    for f in filter:
+                        if f in json_string:
+                            if not disable_output:
+                                print(f"[FILTER] Filter {f} matched object {r_obj_dict.get('id', '<ID not given>')}, "
+                                      f"skipping...")
+                            filtered = True
+                            break
+                if filtered:
+                    continue
                 r_obj_id = r_obj_dict.get("id", "<NO ID GIVEN>").replace(".", "[.]")
 
                 # Check the detection
@@ -335,6 +349,7 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                         )
                     except KeyError as e:
                         print_err(f"[ERR] IP misses key {e}, skipping...")
+                        continue
                 else:
                     print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
                     continue
