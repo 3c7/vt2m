@@ -264,7 +264,8 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
     ip_relations = ["contacted_ips", "embedded_ips", "itw_ips"]
 
     for rel in relations:
-        if rel not in file_relations and rel not in url_relations and rel not in domain_relations:
+        if rel not in file_relations and rel not in url_relations and rel not in domain_relations and \
+                rel not in ip_relations:
             print_err(f"[REL] Relation {rel} not implemented (yet).")
             continue
 
