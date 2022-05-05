@@ -1,8 +1,9 @@
 import os
 
 import typer
+from pymisp import PyMISP
 
-from vt2m.lib.lib import print, print_err, get_vt_notifications
+from vt2m.lib.lib import print, print_err, get_vt_notifications, process_results, process_relations
 from vt2m.lib.output import print_file_object
 
 app = typer.Typer(help="Query and process VT notifications")
@@ -48,3 +49,53 @@ def list_notifications(
                 "attributes.first_submission_date,30",
                 "attributes.sha256"
             )
+
+
+@app.command("to-misp")
+def to_misp(
+        uuid: str = typer.Option(..., help="MISP event UUID"),
+        url: str = typer.Option(None, help="MISP URL - can be passed via MISP_URL env"),
+        key: str = typer.Option(None, help="MISP API Key - can be passed via MISP_KEY env"),
+        vt_key: str = typer.Option(None, help="VirusTotal API Key - can be passed via VT_KEY env"),
+        filter: str = typer.Option("", help="Filter to be used for filtering notifications"),
+        comment: str = typer.Option("", help="Comment for new MISP objects."),
+        limit: int = typer.Option(100, help="Limit of VirusTotal objects to receive"),
+        relations: str = typer.Option("", help="Relations to resolve via VirusTotal"),
+        detections: int = typer.Option(0, help="Amount of detections a related VirusTotal object must at least have"),
+        extract_domains: bool = typer.Option(False,
+                                             help="Extract domains from URL objects and add them as related object.")
+):
+    if not url:
+        url = os.getenv("MISP_URL")
+    if not key:
+        key = os.getenv("MISP_KEY")
+    if not vt_key:
+        vt_key = os.getenv("VT_KEY")
+
+    if not (url and key and vt_key):
+        print_err("[ERR] MISP URL, Key and VT Key must be given.")
+        raise typer.Exit(1)
+
+    misp = PyMISP(url, key)
+    misp.global_pythonify = True
+    event = misp.get_event(uuid)
+    notifications = get_vt_notifications(
+        vt_key=vt_key,
+        filter=filter,
+        limit=limit
+    )
+
+    if len(notifications) == 0:
+        print_err("[WARN] No notifications found.")
+        raise typer.Exit(1)
+
+    created_objects = process_results(notifications, event, comment=comment, )
+    process_relations(
+        api_key=vt_key,
+        objects=created_objects,
+        event=event,
+        relations_string=relations,
+        detections=detections,
+        disable_output=False,
+        extract_domains=extract_domains
+    )

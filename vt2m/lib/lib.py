@@ -1,5 +1,5 @@
-import re
 import json
+import re
 from datetime import datetime
 from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
@@ -237,6 +237,44 @@ def process_ip(ip: Dict, event: MISPEvent, comment: Optional[str] = None, disabl
     return i_obj
 
 
+def process_submission(submission: Dict, event: MISPEvent, comment: Optional[str] = None,
+                       disable_output: bool = False) -> MISPObject:
+    """Adds a virustotal-submission object to the given MISP event."""
+    s_id = submission.get("source_key")
+    if not disable_output:
+        print(f"[SUB] Processing submission from submitter {s_id}.")
+
+    s_obj = get_object_if_available(event, "virustotal-submission", "submitter-id", s_id)
+    if s_obj:
+        return s_obj
+
+    s_obj = event.add_object(name="virustotal-submission", comment=comment if comment else "")
+    s_obj.add_attribute("submitter-id", type="text", value=s_id)
+
+    country = submission.get("country", None)
+    if country:
+        s_obj.add_attribute("country", type="text", value=country)
+
+    city = submission.get("city", None)
+    if city:
+        s_obj.add_attribute("city", type="text", value=city)
+
+    interface = submission.get("interface", None)
+    if interface:
+        s_obj.add_attribute("interface", type="text", value=interface)
+
+    upload_date = submission.get("date", None)
+    if upload_date:
+        upload_date = datetime.fromtimestamp(upload_date)
+        s_obj.add_attribute("date", type="datetime", value=upload_date)
+
+    filename = submission.get("filename", None)
+    if filename:
+        s_obj.add_attribute("filename", type="filename", value=filename)
+
+    return s_obj
+
+
 def get_object_if_available(event: MISPEvent, object_name: str, attribute_relation: str,
                             value: str) -> Union[MISPObject, None]:
     """Returns an object if it's already available in the MISP event."""
@@ -268,10 +306,11 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
     url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
     domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
     ip_relations = ["contacted_ips", "embedded_ips", "itw_ips"]
+    user_account_relations = ["submissions"]
 
     for rel in relations:
         if rel not in file_relations and rel not in url_relations and rel not in domain_relations and \
-                rel not in ip_relations:
+                rel not in ip_relations and rel not in user_account_relations:
             print_err(f"[REL] Relation {rel} not implemented (yet).")
             continue
 
@@ -280,6 +319,7 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
             filtered = False
             for r_obj_dict in r_objs:
                 if filter:
+                    filtered = False
                     json_string = json.dumps(r_obj_dict)
                     for f in filter:
                         if f in json_string:
@@ -350,6 +390,16 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                     except KeyError as e:
                         print_err(f"[ERR] IP misses key {e}, skipping...")
                         continue
+                elif rel in user_account_relations:
+                    try:
+                        r_obj = process_submission(
+                            submission=r_obj_dict["attributes"],
+                            event=event,
+                            comment=f"Added via {rel} relation."
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] Submission misses key {e}, skipping...")
+                        continue
                 else:
                     print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
                     continue
@@ -366,9 +416,11 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                     elif "embedded_" in rel:
                         add_reference(obj, r_obj.uuid, "contains")
                     elif "contacted_" in rel:
-                        add_reference(obj, r_obj.uuid, "contacts")
+                        add_reference(obj, r_obj.uuid, "connects-to")
                     elif "itw_" in rel:
                         add_reference(obj, r_obj.uuid, "downloaded-from")
+                    elif rel == "submissions":
+                        add_reference(r_obj, obj.uuid, "submitted")
                     else:
                         print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
                                   f"Adding as generic \"related-to\".")
