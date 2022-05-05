@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vt2m"
-version = "0.1.4"
+version = "0.1.5"
 description = "Automatically import results from VirusTotal queries into MISP objects"
 authors = ["3c7 <3c7@posteo.de>"]
 license = "MIT"
@@ -9,7 +9,7 @@ homepage = "https://github.com/3c7/vt2m"
 repository = "https://github.com/3c7/vt2m"
 classifiers = [
     "Environment :: Console",
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Information Technology",
     "Intended Audience :: Science/Research",
     "Intended Audience :: System Administrators",
@@ -32,6 +32,7 @@ python = "^3.8"
 requests = "^2.27.1"
 vt-py = "^0.14.0"
 pymisp = ">=2.4.155"
+typer = "^0.4.1"
 
 [tool.poetry.dev-dependencies]
 
@@ -40,4 +41,4 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-vt2m = "vt2m.vt2m:cli"
+vt2m = "vt2m.main:app"
