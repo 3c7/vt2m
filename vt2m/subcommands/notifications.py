@@ -16,9 +16,7 @@ def list_notifications(
         limit: int = typer.Option(10, help="Amount of notifications to grab"),
         sha256: bool = typer.Option(False, "-s", "--sha256", help="Only show sha256 hashes")
 ):
-    """
-    List currently available VirusTotal notifications and filter them using --filter.
-    """
+    """List currently available VirusTotal notifications"""
     if not vt_key:
         vt_key = os.getenv("VT_KEY")
 
@@ -51,8 +49,8 @@ def list_notifications(
             )
 
 
-@app.command("to-misp")
-def to_misp(
+@app.command("import")
+def import_notifications(
         uuid: str = typer.Option(..., help="MISP event UUID"),
         url: str = typer.Option(None, help="MISP URL - can be passed via MISP_URL env"),
         key: str = typer.Option(None, help="MISP API Key - can be passed via MISP_KEY env"),
@@ -65,6 +63,7 @@ def to_misp(
         extract_domains: bool = typer.Option(False,
                                              help="Extract domains from URL objects and add them as related object.")
 ):
+    """Import files related to notifications into your MISP instance"""
     if not url:
         url = os.getenv("MISP_URL")
     if not key:
@@ -99,3 +98,4 @@ def to_misp(
         disable_output=False,
         extract_domains=extract_domains
     )
+    misp.update_event(event)
