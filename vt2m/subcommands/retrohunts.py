@@ -24,6 +24,13 @@ def list_retrohunts(
         rules: bool = typer.Option(False, help="Show rules")
 ):
     """Lists available retrohunts"""
+    if not vt_key:
+        vt_key = os.getenv("VT_KEY", None)
+
+    if not vt_key:
+        print_err("[ERR] VirusTotal key must be given.")
+        raise typer.Exit(-1)
+
     retrohunts = get_vt_retrohunts(
         vt_key=vt_key,
         limit=limit,
