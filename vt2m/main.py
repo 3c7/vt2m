@@ -6,7 +6,7 @@ from typer import Typer, Option, Argument
 
 from vt2m.lib import lib
 from vt2m.lib.output import print_err
-from vt2m.subcommands import notifications
+from vt2m.subcommands import notifications, retrohunts
 
 app = Typer()
 state = {
@@ -82,6 +82,9 @@ def callback(quiet: bool = Option(False, is_flag=True, help="No output except st
 
 
 app.add_typer(notifications.app, name="notifications")
+app.add_typer(notifications.app, name="no")
+app.add_typer(retrohunts.app, name="retrohunts")
+app.add_typer(retrohunts.app, name="re")
 
 if __name__ == "__main__":
     app()

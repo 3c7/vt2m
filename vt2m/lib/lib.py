@@ -539,3 +539,40 @@ def object_represent_string(obj: MISPObject, include_uuid: bool = False) -> str:
         return defanged + "(" + obj.uuid + ")"
 
     return defanged
+
+
+def get_vt_retrohunts(vt_key: str, limit: Optional[int] = 40, filter: Optional[str] = "") -> List[Dict]:
+    """Loads available retrohunts from the VT API."""
+    url = f"https://www.virustotal.com/api/v3/intelligence/retrohunt_jobs?limit={limit}"
+    if filter:
+        url += f"&filter={quote_plus(filter)}"
+
+    data = vt_request(api_key=vt_key, url=url)
+    if "error" in data:
+        print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+        return []
+    return data["data"]
+
+
+def get_retrohunt_rules(r: Dict) -> List[str]:
+    """Extracts rules used within a retrohunt."""
+    rules = []
+    for line in r.get("attributes", {}).get("rules", "").splitlines():
+        line = line.strip()
+        if "rule" in line[:4]:
+            line = line.split("{")[0]
+            line = line.split(":")[0]
+            line = line[4:].strip()
+            rules.append(line)
+    return rules
+
+
+def get_vt_retrohunt_files(vt_key: str, r_id: str, limit: Optional[int] = 100):
+    """Retrieve file objects related to a retrohunt from VT."""
+    url = f"https://www.virustotal.com/api/v3/intelligence/retrohunt_jobs/{r_id}/matching_files?limit={limit}"
+
+    data = vt_request(api_key=vt_key, url=url)
+    if "error" in data:
+        print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+        return []
+    return data["data"]
