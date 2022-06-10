@@ -5,6 +5,7 @@ from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
 
 import requests
+import typer
 from pymisp import MISPEvent, MISPObject
 from vt import Client as VTClient
 
@@ -29,10 +30,15 @@ def vt_query(api_key: str, query: str, limit: Optional[int]) -> List:
     if not limit:
         limit = 100
 
-    with VTClient(apikey=api_key) as vt_client:
-        response = vt_client.get(f"/intelligence/search?query={quote_plus(query)}&limit={limit}")
-        results = response.json()
-        return results.get("data", [])
+    response = vt_request(
+        api_key=api_key,
+        url=f"https://www.virustotal.com/api/v3/intelligence/search?query={quote_plus(query)}&limit={limit}"
+    )
+    if "error" in response and len(response["error"] > 0):
+        print_err(f"Received error from VT API: {response['error']}")
+        raise typer.Exit(-1)
+
+    return response["data"]
 
 
 def process_results(results: Union[Generator, List], event: MISPEvent, comment: Optional[str],

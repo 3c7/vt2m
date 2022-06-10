@@ -55,6 +55,7 @@ def query(
         query=query,
         limit=limit
     )
+
     created_objects = lib.process_results(
         results=results,
         event=event,
