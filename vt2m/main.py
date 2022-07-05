@@ -24,7 +24,8 @@ def query(
         vt_key: str = Option(None, "--vt-key", "-k", help="VirusTotal API Key - can be passed via VT_KEY env"),
         comment: str = Option("", "--comment", "-c", help="Comment for new MISP objects."),
         limit: int = Option(100, "--limit", "-l", help="Limit of VirusTotal objects to receive"),
-        relations: str = Option("", "--relations", "-r", help="Relations to resolve via VirusTotal"),
+        relations: str = Option("", "--relations", "-r", help=f"Relations to resolve via VirusTotal, available "
+                                                              f"relations are: {', '.join(lib.all_relations)}"),
         detections: int = Option(0, "--detections", "-d",
                                  help="Amount of detections a related VirusTotal object must at least have"),
         extract_domains: bool = Option(False, "--extract-domains", "-D",
@@ -55,6 +56,7 @@ def query(
         query=query,
         limit=limit
     )
+
     created_objects = lib.process_results(
         results=results,
         event=event,

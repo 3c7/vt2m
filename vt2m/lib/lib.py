@@ -5,10 +5,25 @@ from typing import Generator, Union, List, Optional, Dict
 from urllib.parse import quote_plus, urlparse
 
 import requests
+import typer
 from pymisp import MISPEvent, MISPObject
 from vt import Client as VTClient
 
 from vt2m.lib.output import print, print_err
+
+file_relations = ["execution_parents", "compressed_parents", "bundled_files", "dropped_files"]
+url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
+domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
+ip_relations = ["contacted_ips", "embedded_ips", "itw_ips"]
+user_account_relations = ["submissions"]
+communication_relations = ["communicating_files"]
+all_relations = []
+all_relations.extend(file_relations)
+all_relations.extend(url_relations)
+all_relations.extend(domain_relations)
+all_relations.extend(ip_relations)
+all_relations.extend(user_account_relations)
+all_relations.extend(communication_relations)
 
 
 def vt_request(api_key: str, url: str):
@@ -29,10 +44,15 @@ def vt_query(api_key: str, query: str, limit: Optional[int]) -> List:
     if not limit:
         limit = 100
 
-    with VTClient(apikey=api_key) as vt_client:
-        response = vt_client.get(f"/intelligence/search?query={quote_plus(query)}&limit={limit}")
-        results = response.json()
-        return results.get("data", [])
+    response = vt_request(
+        api_key=api_key,
+        url=f"https://www.virustotal.com/api/v3/intelligence/search?query={quote_plus(query)}&limit={limit}"
+    )
+    if "error" in response and len(response["error"] > 0):
+        print_err(f"Received error from VT API: {response['error']}")
+        raise typer.Exit(-1)
+
+    return response["data"]
 
 
 def process_results(results: Union[Generator, List], event: MISPEvent, comment: Optional[str],
@@ -100,6 +120,9 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     f_obj.add_attribute("md5", simple_value=file["md5"])
     f_obj.add_attribute("sha1", simple_value=file["sha1"])
     f_obj.add_attribute("sha256", simple_value=sha256)
+    fs = file.get("first_submission_date", None)
+    if fs:
+        f_obj.first_seen = datetime.fromtimestamp(fs)
 
     names = file.get("names", [])
     if len(names) > 0:
@@ -302,15 +325,8 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
     else:
         relations = [relations_string]
 
-    file_relations = ["execution_parents", "compressed_parents", "bundled_files", "dropped_files"]
-    url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
-    domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
-    ip_relations = ["contacted_ips", "embedded_ips", "itw_ips"]
-    user_account_relations = ["submissions"]
-
     for rel in relations:
-        if rel not in file_relations and rel not in url_relations and rel not in domain_relations and \
-                rel not in ip_relations and rel not in user_account_relations:
+        if rel not in all_relations:
             print_err(f"[REL] Relation {rel} not implemented (yet).")
             continue
 
@@ -400,6 +416,17 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                     except KeyError as e:
                         print_err(f"[ERR] Submission misses key {e}, skipping...")
                         continue
+                elif rel in communication_relations:
+                    try:
+                        r_obj = process_file(
+                            file=r_obj_dict["attributes"],
+                            event=event,
+                            disable_output=True,
+                            comment=f"Added via {rel} relation."
+                        )
+                    except KeyError as e:
+                        print_err(f"[ERR] File misses key {e}, skipping...")
+                        continue
                 else:
                     print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
                     continue
@@ -421,6 +448,8 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
                         add_reference(obj, r_obj.uuid, "downloaded-from")
                     elif rel == "submissions":
                         add_reference(r_obj, obj.uuid, "submitted")
+                    elif rel == "communicating_files":
+                        add_reference(r_obj, obj.uuid, "connects-to")
                     else:
                         print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
                                   f"Adding as generic \"related-to\".")
@@ -453,15 +482,20 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
     """Gets related objects from VT."""
     if obj.name == "file":
         vt_id = obj.get_attributes_by_relation("sha256")[0].value
+    elif obj.name == "domain-ip":
+        vt_id = obj.get_attributes_by_relation("domain")[0].value
     else:
-        print_err("[REL] Currently only file objects are supported.")
+        print_err("[REL] Currently only file and domain objects are supported.")
         return []
 
     if not disable_output:
         print(f"[REL] Receiving {rel} for {vt_id}...")
 
     with VTClient(api_key) as client:
-        res = client.get(f"/files/{vt_id}/{rel}?limit=40").json()
+        if obj.name == "file":
+            res = client.get(f"/files/{vt_id}/{rel}?limit=40").json()
+        elif obj.name == "domain-ip":
+            res = client.get(f"/domains/{vt_id}/{rel}?limit=40").json()
     if "error" in res:
         print_err(f"[REL] Error during receiving related objects: {res['error']}.")
         return []
@@ -469,7 +503,7 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
     related_objects = []
     for related_object in res.get("data", []):
         if "error" in related_object:
-            print_err(f"[REL] File {related_object['id']} not available on VT.")
+            print_err(f"[REL] Object {related_object['id']} not available on VT.")
         else:
             related_objects.append(related_object)
     if not disable_output:
