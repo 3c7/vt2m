@@ -120,6 +120,9 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     f_obj.add_attribute("md5", simple_value=file["md5"])
     f_obj.add_attribute("sha1", simple_value=file["sha1"])
     f_obj.add_attribute("sha256", simple_value=sha256)
+    fs = file.get("first_submission_date", None)
+    if fs:
+        f_obj.first_seen = datetime.fromtimestamp(fs)
 
     names = file.get("names", [])
     if len(names) > 0:
