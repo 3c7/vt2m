@@ -30,9 +30,9 @@ include = [
 [tool.poetry.dependencies]
 python = "^3.8"
 requests = "^2.27.1"
-vt-py = "^0.14.0"
-pymisp = "^2.4.159"
-typer = "^0.4.1"
+vt-py = "^0.17.4"
+pymisp = "^2.4.168"
+typer = "^0.7.0"
 
 [tool.poetry.dev-dependencies]
 
