@@ -7,7 +7,7 @@ from urllib.parse import quote_plus, urlparse
 import requests
 import typer
 from pymisp import MISPEvent, MISPObject
-from vt import Client as VTClient
+from vt import Client as VTClient, ClientResponse
 
 from vt2m.lib.output import print, print_err
 
@@ -41,18 +41,36 @@ def vt_request(api_key: str, url: str):
 
 def vt_query(api_key: str, query: str, limit: Optional[int]) -> List:
     """Queries VT API and yields a list of results."""
+    data = []
+    cursor = ""
     if not limit:
         limit = 100
 
-    response = vt_request(
-        api_key=api_key,
-        url=f"https://www.virustotal.com/api/v3/intelligence/search?query={quote_plus(query)}&limit={limit}"
-    )
-    if "error" in response and len(response["error"] > 0):
-        print_err(f"Received error from VT API: {response['error']}")
-        raise typer.Exit(-1)
+    while limit > 0:
+        query_limit = limit if limit <= 100 else 100
+        limit -= limit if limit <= 100 else 100
 
-    return response["data"]
+        response = vt_request(
+            api_key=api_key,
+            url=f"https://www.virustotal.com/api/v3/intelligence/search?"
+                f"query={quote_plus(query)}&"
+                f"limit={query_limit}&"
+                f"cursor={cursor}"
+        )
+        if "error" in response and len(response["error"] > 0):
+            print_err(f"Received error from VT API: {response['error']}")
+            raise typer.Exit(-1)
+
+        data.extend(response["data"])
+
+        meta = response.get("meta", {})
+        if "cursor" in meta:
+            cursor = meta["cursor"]
+        else:
+            # Reset cursor and set limit to 0 in order to exit the loop
+            cursor = ""
+            limit = 0
+    return data
 
 
 def process_results(results: Union[Generator, List], event: MISPEvent, comment: Optional[str],
@@ -120,6 +138,7 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     f_obj.add_attribute("md5", simple_value=file["md5"])
     f_obj.add_attribute("sha1", simple_value=file["sha1"])
     f_obj.add_attribute("sha256", simple_value=sha256)
+    f_obj.add_attribute("size-in-bytes", simple_value=file["size"])
     fs = file.get("first_submission_date", None)
     if fs:
         f_obj.first_seen = datetime.fromtimestamp(fs)
@@ -312,9 +331,9 @@ def get_object_if_available(event: MISPEvent, object_name: str, attribute_relati
     return None
 
 
-def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
+def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
                       detections: Optional[int], disable_output: bool = False, extract_domains: bool = False,
-                      filter=None):
+                      limit: int = 40, filter=None):
     """Creates related objects based on given relation string."""
     # Todo: Add additional relations
     if not relations_string or len(relations_string) == 0:
@@ -331,7 +350,13 @@ def process_relations(api_key: str, objects: List[MISPObject], event: MISPEvent,
             continue
 
         for obj in objects:
-            r_objs = get_related_objects(api_key, obj, rel, disable_output)
+            r_objs = get_related_objects(
+                api_key=api_key,
+                obj=obj,
+                rel=rel,
+                limit=limit,
+                disable_output=disable_output
+            )
             filtered = False
             for r_obj_dict in r_objs:
                 if filter:
@@ -478,7 +503,9 @@ def reference_available(obj: MISPObject, referenced_uuid: str, relationship_type
     return False
 
 
-def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output: bool = False) -> List[Dict]:
+def get_related_objects(
+        *, api_key: str, obj: MISPObject, rel: str, limit: int = 40, disable_output: bool = False
+) -> List[Dict]:
     """Gets related objects from VT."""
     if obj.name == "file":
         vt_id = obj.get_attributes_by_relation("sha256")[0].value
@@ -491,17 +518,33 @@ def get_related_objects(api_key: str, obj: MISPObject, rel: str, disable_output:
     if not disable_output:
         print(f"[REL] Receiving {rel} for {vt_id}...")
 
+    data = []
     with VTClient(api_key) as client:
-        if obj.name == "file":
-            res = client.get(f"/files/{vt_id}/{rel}?limit=40").json()
-        elif obj.name == "domain-ip":
-            res = client.get(f"/domains/{vt_id}/{rel}?limit=40").json()
-    if "error" in res:
-        print_err(f"[REL] Error during receiving related objects: {res['error']}.")
-        return []
+        cursor = ""
+        while limit > 0:
+            query_limit = limit if limit <= 40 else 40
+            limit -= limit if limit <= 40 else 40
+            if obj.name == "file":
+                res = client.get(f"/files/{vt_id}/{rel}?limit={query_limit}&cursor={cursor}").json()
+            elif obj.name == "domain-ip":
+                res = client.get(f"/domains/{vt_id}/{rel}?limit={query_limit}&cursor={cursor}").json()
+
+            if "error" in res:
+                print_err(f"[REL] Error during receiving related objects: {res['error']}.")
+                return []
+
+            data.extend(res["data"])
+
+            meta = res.get("meta", {})
+            if "cursor" in meta:
+                cursor = meta["cursor"]
+            else:
+                # Reset cursor and set limit to 0 in order to exit the loop
+                cursor = ""
+                limit = 0
 
     related_objects = []
-    for related_object in res.get("data", []):
+    for related_object in data:
         if "error" in related_object:
             print_err(f"[REL] Object {related_object['id']} not available on VT.")
         else:
