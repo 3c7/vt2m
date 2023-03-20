@@ -30,17 +30,36 @@ def query(
             "--limit-relations",
             "-L",
             help="Limit the amount of related objects. Note that this is for every relation queries."),
-        relations: str = Option("", "--relations", "-r", help=f"Relations to resolve via VirusTotal, available "
-                                                              f"relations are: {', '.join(lib.all_relations)}"),
+        relations: str = Option(
+            "",
+            "--relations",
+            "-r",
+            help=f"Relations to resolve via VirusTotal, available relations are: {', '.join(lib.all_relations)}"
+        ),
         detections: int = Option(0, "--detections", "-d",
                                  help="Amount of detections a related VirusTotal object must at least have"),
         extract_domains: bool = Option(False, "--extract-domains", "-D",
                                        help="Extract domains from URL objects and add them as related object."),
-        filter: List[str] = Option([], "--filter", "-f", help="Filtering related objects by matching this string(s) "
-                                                              "against json dumps of the objects."),
-        pivot: str = Option(None, "-p", "--pivot", help="Pivot from the given query before resolving relationships. "
-                                                        "This must be a valid VT file relation."),
-        pivot_limit: int = Option(40, "-P", "--pivot-limit", help="Limit the amount of files returned by a pivot.")
+        filter: List[str] = Option(
+            [],
+            "--filter",
+            "-f",
+            help="Filtering related objects by matching this string(s) against json dumps of the objects."
+        ),
+        pivot: str = Option(
+            None,
+            "-p",
+            "--pivot",
+            help="Pivot from the given query before resolving relationships. This must be a valid VT file relation "
+                 f"({', '.join(lib.file_relations)})."
+        ),
+        pivot_limit: int = Option(40, "-P", "--pivot-limit", help="Limit the amount of files returned by a pivot."),
+        pivot_comment: str = Option(None, "-C", "--pivot-comment", help="Comment to add to the initial pivot object."),
+        pivot_relationship: str = Option(
+            "related-to",
+            "--pivot-relationship",
+            help="MISP relationship type for the relation between the initial pivot object and the results."
+        )
 ):
     """
     Query VT for files and add them to a MISP event
@@ -69,6 +88,7 @@ def query(
         limit=limit
     )
 
+    pivot_object = None
     if pivot:
         pivot_results = []
         for r in results:
@@ -85,6 +105,13 @@ def query(
             print_err("[PIV] No files returned.")
             raise typer.Exit(-1)
         else:
+            pivot_object = lib.process_results(
+                results=results,
+                event=event,
+                comment=pivot_comment,
+                disable_output=state["quiet"],
+                extract_domains=False
+            )[0]
             results = pivot_results
 
     created_objects = lib.process_results(
@@ -105,6 +132,9 @@ def query(
         limit=limit_relations,
         filter=filter
     )
+    if pivot and pivot_object:
+        for obj in created_objects:
+            lib.add_reference(pivot_object, obj.uuid, pivot_relationship)
     event.published = False
     misp.update_event(event)
 
