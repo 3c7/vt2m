@@ -1,6 +1,7 @@
 import os
 from typing import List
 
+import typer
 from pymisp import PyMISP
 from typer import Typer, Option, Argument
 
@@ -36,7 +37,10 @@ def query(
         extract_domains: bool = Option(False, "--extract-domains", "-D",
                                        help="Extract domains from URL objects and add them as related object."),
         filter: List[str] = Option([], "--filter", "-f", help="Filtering related objects by matching this string(s) "
-                                                              "against json dumps of the objects.")
+                                                              "against json dumps of the objects."),
+        pivot: str = Option(None, "-p", "--pivot", help="Pivot from the given query before resolving relationships. "
+                                                        "This must be a valid VT file relation."),
+        pivot_limit: int = Option(40, "-P", "--pivot-limit", help="Limit the amount of files returned by a pivot.")
 ):
     """
     Query VT for files and add them to a MISP event
@@ -53,6 +57,9 @@ def query(
     if not url or not key or not vt_key:
         print_err("[ERR] URL and key must be given either through param or env.")
 
+    if pivot and pivot not in lib.file_relations:
+        print_err("[ERR] Pivot relationship is not valid or not implemented.")
+
     misp = PyMISP(url, key)
     misp.global_pythonify = True
     event = misp.get_event(uuid)
@@ -61,6 +68,24 @@ def query(
         query=query,
         limit=limit
     )
+
+    if pivot:
+        pivot_results = []
+        for r in results:
+            pivot_results.extend(
+                lib.pivot_from_hash(
+                    api_key=vt_key,
+                    sha256_hash=r["attributes"]["sha256"],
+                    rel=pivot,
+                    limit=pivot_limit,
+                    disable_output=state["quiet"]
+                )
+            )
+        if len(pivot_results) == 0:
+            print_err("[PIV] No files returned.")
+            raise typer.Exit(-1)
+        else:
+            results = pivot_results
 
     created_objects = lib.process_results(
         results=results,

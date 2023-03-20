@@ -12,9 +12,9 @@ app = typer.Typer(help="Query and process VT notifications")
 
 @app.command("list")
 def list_notifications(
-        vt_key: str = typer.Option(None, help="VT API Key - can also be set via VT_KEY env"),
-        filter: str = typer.Option("", help="Filter to be used for filtering notifications"),
-        limit: int = typer.Option(10, help="Amount of notifications to grab"),
+        vt_key: str = typer.Option(None, "-k", "--vt-key", help="VT API Key - can also be set via VT_KEY env"),
+        filter: str = typer.Option("", "-f", "--filter", help="Filter to be used for filtering notifications"),
+        limit: int = typer.Option(10, "-l", "--limit", help="Amount of notifications to grab"),
         sha256: bool = typer.Option(False, "-s", "--sha256", help="Only show sha256 hashes")
 ):
     """List currently available VirusTotal notifications"""

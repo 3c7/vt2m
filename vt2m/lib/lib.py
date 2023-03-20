@@ -7,7 +7,7 @@ from urllib.parse import quote_plus, urlparse
 import requests
 import typer
 from pymisp import MISPEvent, MISPObject
-from vt import Client as VTClient, ClientResponse
+from vt import Client as VTClient
 
 from vt2m.lib.output import print, print_err
 
@@ -503,6 +503,48 @@ def reference_available(obj: MISPObject, referenced_uuid: str, relationship_type
     return False
 
 
+def pivot_from_hash(
+        *,
+        api_key: str,
+        sha256_hash: str,
+        rel: str,
+        limit: int = 40,
+        disable_output: bool = False
+):
+    """Pivots from a hash and retrieves file objects in 'rel' relation. Returns a list of VT dictionary objects."""
+    if not disable_output:
+        print(f"[PIV] Pivot to {rel} from {sha256_hash}.")
+
+    data = []
+    with VTClient(api_key) as client:
+        cursor = ""
+        while limit > 0:
+            query_limit = limit if limit <= 40 else 40
+            limit -= limit if limit <= 40 else 40
+            url = f"/files/{sha256_hash}/{rel}?limit={query_limit}"
+            if cursor != "":
+                url += f"&cursor={cursor}"
+            res = client.get(url).json()
+
+            if "error" in res:
+                print_err(f"[PIV] Error during receiving related objects: {res['error']}.")
+                return []
+
+            data.extend(res["data"])
+
+            meta = res.get("meta", {})
+            if "cursor" in meta:
+                cursor = meta["cursor"]
+            else:
+                # Reset cursor and set limit to 0 in order to exit the loop
+                cursor = ""
+                limit = 0
+    if not disable_output:
+        for d in data:
+            print(f"[PIV] Got {d['attributes']['sha256']}.")
+    return data
+
+
 def get_related_objects(
         *, api_key: str, obj: MISPObject, rel: str, limit: int = 40, disable_output: bool = False
 ) -> List[Dict]:
@@ -560,6 +602,10 @@ def get_vt_notifications(
         limit: int = 10
 ) -> List:
     """Requests notifications from VT API. Applies an optional filter."""
+    max_limit = limit
+    if max_limit > 40:
+        max_limit -= 40
+        limit = 40
     url = f"https://www.virustotal.com/api/v3/intelligence/hunting_notification_files?limit={limit}"
     if filter:
         url += f"&filter={quote_plus(filter)}"
@@ -568,7 +614,26 @@ def get_vt_notifications(
     if "error" in data:
         print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
         return []
-    return data["data"]
+
+    results = data.get("data", [])
+    while "cursor" in data.get("meta", {}) and max_limit:
+        if max_limit > 40:
+            max_limit -= 40
+            limit = 40
+        else:
+            limit = max_limit
+            max_limit = 0
+        url = f"https://www.virustotal.com/api/v3/intelligence/hunting_notification_files?limit={limit}" \
+              f"&cursor={data['meta']['cursor']}"
+        if filter:
+            url += f"&filter={quote_plus(filter)}"
+
+        data = vt_request(api_key=vt_key, url=url)
+        if "error" in data:
+            print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+            break
+        results.extend(data.get("data", []))
+    return results
 
 
 def create_domain_from_url(event: MISPEvent, domain: str, u_obj: MISPObject, disable_output: bool = False):
@@ -631,7 +696,7 @@ def get_vt_retrohunts(vt_key: str, limit: Optional[int] = 40, filter: Optional[s
     return data["data"]
 
 
-def get_retrohunt_rules(r: Dict) -> List[str]:
+def get_retrohunt_rule_names(r: Dict) -> List[str]:
     """Extracts rules used within a retrohunt."""
     rules = []
     for line in r.get("attributes", {}).get("rules", "").splitlines():
