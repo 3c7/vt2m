@@ -6,7 +6,7 @@ from pymisp import PyMISP
 
 from vt2m.lib.lib import (
     get_vt_retrohunts,
-    get_retrohunt_rules,
+    get_retrohunt_rule_names,
     get_vt_retrohunt_files,
     process_results,
     process_relations
@@ -21,7 +21,8 @@ def list_retrohunts(
         vt_key: str = typer.Option(None, help="VT API Key - can also be set via VT_KEY env"),
         limit: int = typer.Option(40, help="Limit of retrohunts to return"),
         filter: str = typer.Option("", help="Text filter to apply"),
-        rules: bool = typer.Option(False, help="Show rules")
+        rules: bool = typer.Option(False, "-r", "--rules", help="Show rulenames"),
+        full_rules: bool = typer.Option(False, "-R", "--full-rules", help="Show full rules")
 ):
     """Lists available retrohunts"""
     if not vt_key:
@@ -45,7 +46,11 @@ def list_retrohunts(
         print_file_object(item, "id,25", "attributes.status,15", "attributes.finish_date,25", "attributes.num_matches")
         if rules:
             print("Rules: ", nl=False)
-            print(", ".join(get_retrohunt_rules(item)))
+            print(", ".join(get_retrohunt_rule_names(item)))
+        elif full_rules:
+            print("----------------------------------------------------------------------")
+            print(item["attributes"]["rules"])
+            print("----------------------------------------------------------------------")
 
 
 @app.command("import")
