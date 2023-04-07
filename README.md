@@ -3,7 +3,8 @@
 While there are multiple Python projects which implement the object creation based on single VirusTotal objects, this
 project aims to enable users to directly convert VirusTotal search queries to MISP objects.
 **This is work in progress.** Future release will implement handling URLs, Domain and IP objects, too. Right now, only
-file objects - as a base for queries - are implemented. These file objects can have related IPs, domains and URLs, though.
+file objects - as a base for queries - are implemented. These file objects can have related IPs, domains and URLs,
+though.
 
 ## Installation
 
@@ -15,10 +16,11 @@ pip install vt2m
 
 If you use the script frequently, passing the arguments as environment variables (`MISP_URL`, `MISP_KEY`, `VT_KEY`)
 can be useful to save some time. For example, this can be achieved through creating a shell script which passes the
-environment variables and executes the command with spaces in front, so it does not show up in the shell history. Something like this:
+environment variables and executes the command with spaces in front, so it does not show up in the shell history.
+Something like this:
 
 ```bash
-#!/usr/bin env bash
+#!/usr/bin/env bash
 
 SAVEIFS=$IFS
 IFS=$(echo -en "\n\b")
@@ -85,12 +87,16 @@ Options:
   --help                         Show this message and exit.
 ```
 
-The `query` command supports ingesting files from a VT search, but additional also requesting specific related files or infrastructure indicators (via `--relations`) and an initial pivot off the files (via `--pivot`). The latter means that, e.g., you're able to search for files that are commonly dropped or contained within the samples you're actually searching for and use the "parent" files as your regular result set, enrichting them with additional relationships etc.
+The `query` command supports ingesting files from a VT search, but additional also requesting specific related files or
+infrastructure indicators (via `--relations`) and an initial pivot off the files (via `--pivot`). The latter means that,
+e.g., you're able to search for files that are commonly dropped or contained within the samples you're actually
+searching for and use the "parent" files as your regular result set, enrichting them with additional relationships etc.
 
 Via `--relations` VirusTotal relations can be resolved and added as MISP objects with the specific relations, e.g. the
 following graph was created using vt2m:
 ![MISP Graph](.github/screenshots/graph.png)
-*Graph created via `vt2m --uuid <UUID> --limit 5 --relations dropped_files,execution_parents "behaviour_processes:\"ping -n 70\""`*
+*Graph created
+via `vt2m --uuid <UUID> --limit 5 --relations dropped_files,execution_parents "behaviour_processes:\"ping -n 70\""`*
 
 ### VirusTotal Livehunt notifications: `notifications`
 
@@ -125,3 +131,46 @@ Commands:
 ```
 
 The command allows to list and to import retrohunt results via two subcommands.
+
+## Examples
+
+### Query for hashes
+
+In order to just ingest files you already found via VirusTotal search, you can query for the file hashes in order to
+save VirusTotal queries. This way the command only counts towards regular API calls.
+
+`vt2m query --uuid <MISP Event UUID> "<hash 1> <hash 2> <hash 3> ... <hash n>"`
+
+Of course, the same way you're able to include related objects, e.g. contacted URLs, the according domains and dropped
+files during execution.
+
+`vt2m query --uuid <MISP Event UUID> --relations contacted_urls,dropped_files --extract-domains "<hash 1> <hash 2> <hash 3> ... <hash n>"`
+
+### Query using VirusTotal Intelligence Searches
+
+Similar as above, you can directly use VirusTotal search queries for ingesting indicators into MISP events:
+
+`vt2m query --uuid <MISP Event UUID> --relations contacted_urls,dropped_files --extract-domains "imphash:<imphash>"`
+
+### Pivot before query
+
+Sometimes it's necessary to pivot before receiving the actual files. This is useful, if files drop a common file during
+execution, or archives have a common file bundled. This can be done this way:
+
+`vt2m query --uuid <MISP Event UUID> --relations contacted_domains,bundled_files --detections 3 --pivot compressed_parents --pivot-comment "RC4 Key" --pivot-limit 20 --pivot-relationship contained-within 99c9440a84cdc428ce140de901452eb334faec49f1f6258acdde1ddcbb34376e`
+
+As this command introduces some parameters that might be not self-explanatory, here is a small breakdown of them:
+
+| Parameter                              | Description                                                                         |
+|----------------------------------------|-------------------------------------------------------------------------------------|
+| `--uuid`                               | The UUID of the MISP event which will be the ingestion target                       |
+| `--relations`                          | VirusTotal relations to query for                                                   |
+| `--detections 3`                       | Filter for related objects with at least 3 AV detections                            |
+| `--pivot compressed_parents`           | Enable pivot mode and pivot via the relation given                                  |
+| `--pivot-comment`                      | Comment to add to the MISP object pivoted from                                      |
+| `--pivot-limit 20`                     | Limit the pivot to 20 objects                                                       |
+| `--pivot-relationship contaned-within` | MISP relationship between the pivoted object and the results, default is related-to |
+
+The above query is resulting in the following MISP graph:
+
+![MISP graph of the pivot example](.github/screenshots/graph2.png)
