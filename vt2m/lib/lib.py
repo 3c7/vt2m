@@ -567,9 +567,14 @@ def get_related_objects(
             query_limit = limit if limit <= 40 else 40
             limit -= limit if limit <= 40 else 40
             if obj.name == "file":
-                res = client.get(f"/files/{vt_id}/{rel}?limit={query_limit}&cursor={cursor}").json()
+                uri = f"/files/{vt_id}/{rel}?limit={query_limit}"
             elif obj.name == "domain-ip":
-                res = client.get(f"/domains/{vt_id}/{rel}?limit={query_limit}&cursor={cursor}").json()
+                uri = f"/domains/{vt_id}/{rel}?limit={query_limit}"
+
+            if cursor != "":
+                uri += f"&cursor={cursor}"
+
+            res = client.get(uri).json()
 
             if "error" in res:
                 print_err(f"[REL] Error during receiving related objects: {res['error']}.")
