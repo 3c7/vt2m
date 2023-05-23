@@ -142,8 +142,8 @@ def query(
 
 @app.callback()
 def callback(
-        quiet: bool = Option(False, is_flag=True, help="No output except stderr"),
-        verbose: bool = Option(False, "-v", "--verbose", is_flag=True, help="Use verbose logging")
+        quiet: bool = Option(False, "-q", "--quiet", help="No output except stderr"),
+        verbose: bool = Option(False, "-v", "--verbose", help="Use verbose logging")
 ):
     basicConfig(
         level="DEBUG" if verbose else "INFO", format="%(message)s", datefmt="[%X]", handlers=[RichHandler()]
