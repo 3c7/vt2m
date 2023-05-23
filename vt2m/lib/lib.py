@@ -11,12 +11,15 @@ from vt import Client as VTClient
 
 from vt2m.lib.output import print, print_err
 
-file_relations = ["execution_parents", "compressed_parents", "bundled_files", "dropped_files"]
+file_relations = [
+    "execution_parents", "compressed_parents", "bundled_files", "dropped_files", "email_attachments", "email_parents",
+    "pe_resource_parents"
+]
 url_relations = ["contacted_urls", "embedded_urls", "itw_urls"]
 domain_relations = ["contacted_domains", "embedded_domains", "itw_domains"]
 ip_relations = ["contacted_ips", "embedded_ips", "itw_ips"]
 user_account_relations = ["submissions"]
-communication_relations = ["communicating_files"]
+communication_relations = ["communicating_files", "downloaded_files"]
 all_relations = []
 all_relations.extend(file_relations)
 all_relations.extend(url_relations)
@@ -106,7 +109,7 @@ def process_results(results: Union[Generator, List], event: MISPEvent, comment: 
                     disable_output=disable_output
                 )
             )
-        elif result["type"] == "ip-address":
+        elif result["type"] == "ip_address":
             created_objects.append(
                 process_ip(
                     ip=result,
@@ -320,13 +323,16 @@ def process_submission(submission: Dict, event: MISPEvent, comment: Optional[str
 def get_object_if_available(event: MISPEvent, object_name: str, attribute_relation: str,
                             value: str) -> Union[MISPObject, None]:
     """Returns an object if it's already available in the MISP event."""
+    obj_name = object_name.upper().split('-')[0]
+    if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", value):
+        obj_name = "IP"
     objects = event.get_objects_by_name(object_name)
     for obj in objects:
         attributes = obj.get_attributes_by_relation(attribute_relation)
         for attribute in attributes:
             if attribute.value == value:
                 value = value.replace("http", "hxxp").replace(".", "[.]")
-                print_err(f"[{object_name.upper().split('-')[0]}] Object with value {value} already available.")
+                print_err(f"[{obj_name}] Object with value {value} already available.")
                 return obj
     return None
 
@@ -459,9 +465,9 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                 try:
                     if rel == "execution_parents":
                         add_reference(r_obj, obj.uuid, "executes")
-                    elif rel == "compressed_parents":
+                    elif rel == "compressed_parents" or rel == "pe_resource_parents":
                         add_reference(r_obj, obj.uuid, "contains")
-                    elif rel == "bundled_files":
+                    elif rel == "bundled_files" or rel == "email_attachments":
                         add_reference(obj, r_obj.uuid, "contains")
                     elif rel == "dropped_files":
                         add_reference(obj, r_obj.uuid, "drops")
@@ -475,6 +481,8 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                         add_reference(r_obj, obj.uuid, "submitted")
                     elif rel == "communicating_files":
                         add_reference(r_obj, obj.uuid, "connects-to")
+                    elif rel == "downloaded_files":
+                        add_reference(r_obj, obj.uuid, "downloaded-from")
                     else:
                         print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
                                   f"Adding as generic \"related-to\".")
@@ -549,10 +557,16 @@ def get_related_objects(
         *, api_key: str, obj: MISPObject, rel: str, limit: int = 40, disable_output: bool = False
 ) -> List[Dict]:
     """Gets related objects from VT."""
+    endpoint = None
     if obj.name == "file":
         vt_id = obj.get_attributes_by_relation("sha256")[0].value
     elif obj.name == "domain-ip":
-        vt_id = obj.get_attributes_by_relation("domain")[0].value
+        try:
+            endpoint = "domains"
+            vt_id = obj.get_attributes_by_relation("domain")[0].value
+        except IndexError:
+            endpoint = "ip_addresses"
+            vt_id = obj.get_attributes_by_relation("ip")[0].value
     else:
         print_err("[REL] Currently only file and domain objects are supported.")
         return []
@@ -569,7 +583,7 @@ def get_related_objects(
             if obj.name == "file":
                 uri = f"/files/{vt_id}/{rel}?limit={query_limit}"
             elif obj.name == "domain-ip":
-                uri = f"/domains/{vt_id}/{rel}?limit={query_limit}"
+                uri = f"/{endpoint}/{vt_id}/{rel}?limit={query_limit}"
 
             if cursor != "":
                 uri += f"&cursor={cursor}"
