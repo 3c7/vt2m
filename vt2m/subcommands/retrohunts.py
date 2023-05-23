@@ -3,33 +3,35 @@ from typing import List
 
 import typer
 from pymisp import PyMISP
+from rich.box import MINIMAL
+from rich.console import Console
+from rich.table import Table
 
 from vt2m.lib.lib import (
     get_vt_retrohunts,
-    get_retrohunt_rule_names,
     get_vt_retrohunt_files,
     process_results,
     process_relations
 )
-from vt2m.lib.output import print, print_err, print_file_object
+from vt2m.lib.output import warning, error, add_object_to_table
 
 app = typer.Typer(help="Query for retrohunt results.")
 
 
 @app.command("list")
 def list_retrohunts(
-        vt_key: str = typer.Option(None, help="VT API Key - can also be set via VT_KEY env"),
-        limit: int = typer.Option(40, help="Limit of retrohunts to return"),
-        filter: str = typer.Option("", help="Text filter to apply"),
-        rules: bool = typer.Option(False, "-r", "--rules", help="Show rulenames"),
-        full_rules: bool = typer.Option(False, "-R", "--full-rules", help="Show full rules")
+        vt_key: str = typer.Option(None, "-k", "--vt-key", help="VT API Key - can also be set via VT_KEY env"),
+        filter: str = typer.Option("", "-f", "--filter", help="Filter to be used for filtering retrohunts"),
+        limit: int = typer.Option(10, "-l", "--limit", help="Amount of retrohunts to grab"),
+        rules: bool = typer.Option(False, "-r", "--rules", help="Include rules.")
 ):
     """Lists available retrohunts"""
+    con = Console()
     if not vt_key:
         vt_key = os.getenv("VT_KEY", None)
 
     if not vt_key:
-        print_err("[ERR] VirusTotal key must be given.")
+        error("VirusTotal key must be given.")
         raise typer.Exit(-1)
 
     retrohunts = get_vt_retrohunts(
@@ -38,19 +40,27 @@ def list_retrohunts(
         filter=filter
     )
     if len(retrohunts) == 0:
-        print_err("No retrohunts found.")
+        warning("No retrohunts found.")
         raise typer.Exit(-1)
 
-    print(f"{'ID':<25}{'Status':<15}{'Finished Date':<25}Matches")
+    t = Table(box=MINIMAL)
+    t.add_column("ID")
+    t.add_column("Status")
+    t.add_column("Finished Date")
+    if rules:
+        t.add_column("Rules")
+    t.add_column("# Matches")
     for item in retrohunts:
-        print_file_object(item, "id,25", "attributes.status,15", "attributes.finish_date,25", "attributes.num_matches")
-        if rules:
-            print("Rules: ", nl=False)
-            print(", ".join(get_retrohunt_rule_names(item)))
-        elif full_rules:
-            print("----------------------------------------------------------------------")
-            print(item["attributes"]["rules"])
-            print("----------------------------------------------------------------------")
+        if not rules:
+            add_object_to_table(
+                t, item, "id", "attributes.status", "attributes.finish_date", "attributes.num_matches"
+            )
+        else:
+            add_object_to_table(
+                t, item, "id", "attributes.status", "attributes.finish_date", "attributes.rules",
+                "attributes.num_matches"
+            )
+    con.print(t)
 
 
 @app.command("import")
@@ -83,11 +93,11 @@ def import_retrohunt(
         vt_key = os.getenv("VT_KEY", None)
 
     if not rid:
-        print_err("[ERR] Retrohunt ID must be given.")
+        error("Retrohunt ID must be given.")
         raise typer.Exit(-1)
 
     if not url or not key or not vt_key:
-        print_err("[ERR] URL and key must be given either through param or env.")
+        error("URL and key must be given either through param or env.")
         raise typer.Exit(-1)
 
     misp = PyMISP(url, key)

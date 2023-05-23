@@ -9,7 +9,7 @@ import typer
 from pymisp import MISPEvent, MISPObject
 from vt import Client as VTClient
 
-from vt2m.lib.output import print, print_err
+from vt2m.lib.output import debug, info, warning, error
 
 file_relations = [
     "execution_parents", "compressed_parents", "bundled_files", "dropped_files", "email_attachments", "email_parents",
@@ -35,9 +35,10 @@ def vt_request(api_key: str, url: str):
         "Accept": "application/json",
         "x-apikey": api_key
     }
+    debug(f"Sending request to {url}.")
     response = requests.get(url, headers=headers)
     if response.status_code > 302:
-        print_err("[WARN] Status code received from VT API is > 302.")
+        warning("Status code received from VT API is > 302.")
 
     return response.json()
 
@@ -61,7 +62,7 @@ def vt_query(api_key: str, query: str, limit: Optional[int]) -> List:
                 f"cursor={cursor}"
         )
         if "error" in response and len(response["error"] > 0):
-            print_err(f"Received error from VT API: {response['error']}")
+            error(f"Received error from VT API: {response['error']}")
             raise typer.Exit(-1)
 
         data.extend(response["data"])
@@ -119,7 +120,7 @@ def process_results(results: Union[Generator, List], event: MISPEvent, comment: 
                 )
             )
         else:
-            print_err(f"[ERR] Unknown entity type: {result['type']}")
+            error(f"Unknown entity type: {result['type']}")
             continue
     return created_objects
 
@@ -130,8 +131,9 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     sha256 = file.get("sha256", None)
     if not sha256:
         raise KeyError("VirusTotal file object misses sha256 hash. This should not happen.")
+
     if not disable_output:
-        print(f"[FILE] Processing {sha256}...")
+        info(f"[FILE] Adding {sha256} to MISP event {event.uuid}...")
 
     f_obj = get_object_if_available(event, "file", "sha256", sha256)
     if f_obj:
@@ -183,7 +185,7 @@ def process_url(url: Dict, event: MISPEvent, comment: Optional[str] = None, disa
         raise KeyError("VirusTotal URL object missing the actual URL.")
 
     if not disable_output:
-        print(f"[URL] Processing {url_string.replace('http', 'hxxp').replace('.', '[.]')}")
+        info(f"[URL] Adding {url_string.replace('http', 'hxxp').replace('.', '[.]')} to MISP event {event.uuid}...")
 
     _, domain, resource_path, _, query_string, _ = urlparse(url_string)
     port = None
@@ -224,7 +226,7 @@ def process_domain(domain: Dict, event: MISPEvent, comment: Optional[str] = None
         raise KeyError("VirusTotal Domain object missing the ID.")
 
     if not disable_output:
-        print(f"[DOMAIN] Processing {domain_name.replace('.', '[.]')}")
+        print(f"[DOMAIN] Adding {domain_name.replace('.', '[.]')} to MISP event {event.uuid}...")
 
     d_obj = get_object_if_available(event, "domain-ip", "domain", domain_name)
     if d_obj:
@@ -258,7 +260,7 @@ def process_ip(ip: Dict, event: MISPEvent, comment: Optional[str] = None, disabl
         raise KeyError("VirusTotal IP object missing the ID.")
 
     if not disable_output:
-        print(f"[IP] Processing {ip_str.replace('.', '[.]')}.")
+        print(f"[IP] Adding {ip_str.replace('.', '[.]')} to MISP event {event.uuid}...")
 
     i_obj = get_object_if_available(event, "domain-ip", "ip", ip_str)
     if i_obj:
@@ -287,7 +289,7 @@ def process_submission(submission: Dict, event: MISPEvent, comment: Optional[str
     """Adds a virustotal-submission object to the given MISP event."""
     s_id = submission.get("source_key")
     if not disable_output:
-        print(f"[SUB] Processing submission from submitter {s_id}.")
+        info(f"[SUB] Processing submission from submitter {s_id}.")
 
     s_obj = get_object_if_available(event, "virustotal-submission", "submitter-id", s_id)
     if s_obj:
@@ -332,7 +334,7 @@ def get_object_if_available(event: MISPEvent, object_name: str, attribute_relati
         for attribute in attributes:
             if attribute.value == value:
                 value = value.replace("http", "hxxp").replace(".", "[.]")
-                print_err(f"[{obj_name}] Object with value {value} already available.")
+                debug(f"[{obj_name}] Object with value {value} already available.")
                 return obj
     return None
 
@@ -341,7 +343,6 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                       detections: Optional[int], disable_output: bool = False, extract_domains: bool = False,
                       limit: int = 40, filter=None):
     """Creates related objects based on given relation string."""
-    # Todo: Add additional relations
     if not relations_string or len(relations_string) == 0:
         return
 
@@ -350,9 +351,11 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
     else:
         relations = [relations_string]
 
+    debug(f"Processing relations {relations_string.replace(',', ', ')}...")
+
     for rel in relations:
         if rel not in all_relations:
-            print_err(f"[REL] Relation {rel} not implemented (yet).")
+            error(f"[REL] Relation {rel} not implemented (yet).")
             continue
 
         for obj in objects:
@@ -371,8 +374,8 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                     for f in filter:
                         if f in json_string:
                             if not disable_output:
-                                print(f"[FILTER] Filter {f} matched object {r_obj_dict.get('id', '<ID not given>')}, "
-                                      f"skipping...")
+                                info(f"[FILTER] Filter {f} matched object {r_obj_dict.get('id', '<ID not given>')}, "
+                                     f"skipping...")
                             filtered = True
                             break
                 if filtered:
@@ -383,13 +386,13 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                 stats_malicious = r_obj_dict["attributes"].get("last_analysis_stats", {}).get("malicious", 0)
                 if detections and isinstance(detections, int):
                     if not isinstance(stats_malicious, int):
-                        print_err("[REL] Detection stats for are not given as integer therefore skipping the "
-                                  "check.")
+                        warning("[REL] Detection stats for are not given as integer therefore skipping the "
+                                "check.")
                     else:
                         if stats_malicious < detections:
                             if not disable_output:
-                                print(f"[REL] Skipping {r_obj_id} because malicious detections are lower than "
-                                      f"{detections}.")
+                                info(f"[REL] Skipping {r_obj_id} because malicious detections are lower than "
+                                     f"{detections}.")
                             continue
 
                 if rel in file_relations:
@@ -401,7 +404,7 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                             disable_output=True
                         )
                     except KeyError as e:
-                        print_err(f"[ERR] File misses key {e}, skipping...")
+                        error(f"File misses key {e}, skipping...")
                         continue
                 elif rel in url_relations:
                     try:
@@ -413,7 +416,7 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                             extract_domain=extract_domains
                         )
                     except KeyError as e:
-                        print_err(f"[ERR] URL misses key {e}, skipping...")
+                        error(f"URL misses key {e}, skipping...")
                         continue
                 elif rel in domain_relations:
                     try:
@@ -424,7 +427,7 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                             disable_output=True
                         )
                     except KeyError as e:
-                        print_err(f"[ERR] Domain misses key {e}, skipping...")
+                        error(f"Domain misses key {e}, skipping...")
                         continue
                 elif rel in ip_relations:
                     try:
@@ -435,7 +438,7 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                             disable_output=True
                         )
                     except KeyError as e:
-                        print_err(f"[ERR] IP misses key {e}, skipping...")
+                        error(f"IP misses key {e}, skipping...")
                         continue
                 elif rel in user_account_relations:
                     try:
@@ -445,7 +448,7 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                             comment=f"Added via {rel} relation."
                         )
                     except KeyError as e:
-                        print_err(f"[ERR] Submission misses key {e}, skipping...")
+                        error(f"Submission misses key {e}, skipping...")
                         continue
                 elif rel in communication_relations:
                     try:
@@ -456,10 +459,10 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                             comment=f"Added via {rel} relation."
                         )
                     except KeyError as e:
-                        print_err(f"[ERR] File misses key {e}, skipping...")
+                        error(f"File misses key {e}, skipping...")
                         continue
                 else:
-                    print_err(f"[ERR] Could not process returned object \"{r_obj_id}\".")
+                    error(f"Could not process returned object \"{r_obj_id}\".")
                     continue
 
                 try:
@@ -484,14 +487,14 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                     elif rel == "downloaded_files":
                         add_reference(r_obj, obj.uuid, "downloaded-from")
                     else:
-                        print_err(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
-                                  f"Adding as generic \"related-to\".")
+                        warning(f"[REL] Could not determine relationship between {obj.uuid} and {r_obj.uuid}. "
+                                f"Adding as generic \"related-to\".")
                         r_obj.add_reference(obj.uuid, "related-to")
                 except AttributeError as ae:
-                    print_err(f"[ERR] Related object {r_obj_id} missing an attribute: {ae}")
+                    error(f"Related object {r_obj_id} missing an attribute: {ae}")
                     # If the related object is not none, let's dump it to see what's wrong
                     if r_obj:
-                        print_err(f"[ERR] Remote object dump:\n{r_obj.to_json()}")
+                        error(f"Remote object dump:\n{r_obj.to_json()}")
                     continue
 
 
@@ -500,7 +503,7 @@ def add_reference(obj: MISPObject, to_obj_uuid: str, relationship_type: str):
     if not reference_available(obj, to_obj_uuid, relationship_type):
         obj.add_reference(to_obj_uuid, relationship_type)
     else:
-        print_err(f"[REL] {obj.uuid} --{relationship_type}-> {to_obj_uuid} already available and therefore skipped.")
+        warning(f"{obj.uuid} --{relationship_type}-> {to_obj_uuid} already available and therefore skipped.")
 
 
 def reference_available(obj: MISPObject, referenced_uuid: str, relationship_type: str) -> bool:
@@ -518,10 +521,10 @@ def pivot_from_hash(
         rel: str,
         limit: int = 40,
         disable_output: bool = False
-):
+) -> List[Dict]:
     """Pivots from a hash and retrieves file objects in 'rel' relation. Returns a list of VT dictionary objects."""
     if not disable_output:
-        print(f"[PIV] Pivot to {rel} from {sha256_hash}.")
+        info(f"[PIV] Pivot to {rel} from {sha256_hash}.")
 
     data = []
     with VTClient(api_key) as client:
@@ -535,7 +538,7 @@ def pivot_from_hash(
             res = client.get(url).json()
 
             if "error" in res:
-                print_err(f"[PIV] Error during receiving related objects: {res['error']}.")
+                error(f"[PIV] Error during receiving related objects: {res['error']}.")
                 return []
 
             data.extend(res["data"])
@@ -549,7 +552,7 @@ def pivot_from_hash(
                 limit = 0
     if not disable_output:
         for d in data:
-            print(f"[PIV] Got {d['attributes']['sha256']}.")
+            info(f"[PIV] Got {d['attributes']['sha256']}.")
     return data
 
 
@@ -568,11 +571,11 @@ def get_related_objects(
             endpoint = "ip_addresses"
             vt_id = obj.get_attributes_by_relation("ip")[0].value
     else:
-        print_err("[REL] Currently only file and domain objects are supported.")
+        error("[REL] Currently only file, domain and ip_address objects are supported.")
         return []
 
     if not disable_output:
-        print(f"[REL] Receiving {rel} for {vt_id}...")
+        info(f"[REL] Receiving {rel} for {vt_id}...")
 
     data = []
     with VTClient(api_key) as client:
@@ -591,7 +594,7 @@ def get_related_objects(
             res = client.get(uri).json()
 
             if "error" in res:
-                print_err(f"[REL] Error during receiving related objects: {res['error']}.")
+                error(f"[REL] Error during receiving related objects: {res['error']}.")
                 return []
 
             data.extend(res["data"])
@@ -607,11 +610,11 @@ def get_related_objects(
     related_objects = []
     for related_object in data:
         if "error" in related_object:
-            print_err(f"[REL] Object {related_object['id']} not available on VT.")
+            warning(f"[REL] Object {related_object['id']} not available on VT.")
         else:
             related_objects.append(related_object)
     if not disable_output:
-        print(f"[REL] Got {len(related_objects)} {rel} objects.")
+        info(f"[REL] Got {len(related_objects)} {rel} objects.")
     return related_objects
 
 
@@ -631,7 +634,7 @@ def get_vt_notifications(
 
     data = vt_request(api_key=vt_key, url=url)
     if "error" in data:
-        print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+        error(f"Error occured during receiving notifications: {data['error']}")
         return []
 
     results = data.get("data", [])
@@ -649,7 +652,7 @@ def get_vt_notifications(
 
         data = vt_request(api_key=vt_key, url=url)
         if "error" in data:
-            print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+            error(f"Error occured during receiving notifications: {data['error']}")
             break
         results.extend(data.get("data", []))
     return results
@@ -671,7 +674,7 @@ def create_domain_from_url(event: MISPEvent, domain: str, u_obj: MISPObject, dis
             d_obj.add_attribute(attribute_type, simple_value=domain)
         add_reference(u_obj, d_obj.uuid, "contains")
         if not disable_output:
-            print(f"[REL] Extracted {attribute_type} from {object_represent_string(u_obj)}.")
+            info(f"[REL] Extracted {attribute_type} from {object_represent_string(u_obj)}.")
 
 
 def object_represent_string(obj: MISPObject, include_uuid: bool = False) -> str:
@@ -685,13 +688,13 @@ def object_represent_string(obj: MISPObject, include_uuid: bool = False) -> str:
     elif obj.name == "url":
         repr = obj.get_attributes_by_relation("url").pop()
     else:
-        s = f"[ERR] Given object name/type unknown: {obj.name}."
-        print_err(s)
+        s = f"Given object name/type unknown: {obj.name}."
+        error(s)
         raise TypeError(s)
 
     if not repr:
-        s = f"[ERR] Given object does not include its representative attribute: {obj.to_json()}"
-        print_err(s)
+        s = f"Given object does not include its representative attribute: {obj.to_json()}"
+        error(s)
         raise KeyError(s)
 
     defanged = repr.value.replace("http", "hxxp").replace(".", "[.]")
@@ -710,7 +713,7 @@ def get_vt_retrohunts(vt_key: str, limit: Optional[int] = 40, filter: Optional[s
 
     data = vt_request(api_key=vt_key, url=url)
     if "error" in data:
-        print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+        error(f"Error occured during receiving notifications: {data['error']}")
         return []
     return data["data"]
 
@@ -734,6 +737,6 @@ def get_vt_retrohunt_files(vt_key: str, r_id: str, limit: Optional[int] = 100):
 
     data = vt_request(api_key=vt_key, url=url)
     if "error" in data:
-        print_err(f"[ERR] Error occured during receiving notifications: {data['error']}")
+        error(f"Error occured during receiving notifications: {data['error']}")
         return []
     return data["data"]

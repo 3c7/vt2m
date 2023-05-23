@@ -3,9 +3,12 @@ from typing import List
 
 import typer
 from pymisp import PyMISP
+from rich.box import MINIMAL
+from rich.console import Console
+from rich.table import Table
 
-from vt2m.lib.lib import print, print_err, get_vt_notifications, process_results, process_relations
-from vt2m.lib.output import print_file_object
+from vt2m.lib.lib import warning, error, get_vt_notifications, process_results, process_relations
+from vt2m.lib.output import add_object_to_table
 
 app = typer.Typer(help="Query and process VT notifications")
 
@@ -18,12 +21,13 @@ def list_notifications(
         sha256: bool = typer.Option(False, "-s", "--sha256", help="Only show sha256 hashes")
 ):
     """List currently available VirusTotal notifications"""
+    con = Console()
     if not vt_key:
         vt_key = os.getenv("VT_KEY")
 
     if not all([vt_key]):
-        print_err("[ERR] Not all required parameters were given.")
-        raise typer.Abort()
+        error("Not all required parameters were given.")
+        raise typer.Exit(-1)
 
     notifications = get_vt_notifications(
         vt_key=vt_key,
@@ -32,22 +36,23 @@ def list_notifications(
     )
 
     if len(notifications) == 0:
-        print_err("[WARN] No notifications found.")
+        warning("No notifications found.")
         raise typer.Exit(1)
 
-    if not sha256:
-        print(f"{'Rule':<40}{'Submission Date':<30}SHA256 Hash")
-
-    for notification in notifications:
-        if sha256:
-            print_file_object(notification, "attributes.sha256")
-        else:
-            print_file_object(
-                notification,
-                "context_attributes.rule_name,40",
-                "attributes.first_submission_date,30",
-                "attributes.sha256"
+    if sha256:
+        for notification in notifications:
+            con.print(notification["attributes"]["sha256"])
+    else:
+        t = Table(box=MINIMAL)
+        t.add_column("Rule Name")
+        t.add_column("First Seen")
+        t.add_column("SHA256")
+        for notification in notifications:
+            add_object_to_table(
+                t, notification,
+                "context_attributes.rule_name", "attributes.first_submission_date", "attributes.sha256"
             )
+        con.print(t)
 
 
 @app.command("import")
@@ -80,7 +85,7 @@ def import_notifications(
         vt_key = os.getenv("VT_KEY", None)
 
     if not url or not key or not vt_key:
-        print_err("[ERR] URL and key must be given either through param or env.")
+        error("URL and key must be given either through param or env.")
         raise typer.Exit(-1)
 
     misp = PyMISP(url, key)

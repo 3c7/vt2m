@@ -6,9 +6,10 @@ from pymisp import PyMISP
 from typer import Typer, Option, Argument
 
 from vt2m.lib import lib
-from vt2m.lib.output import print_err
+from vt2m.lib.output import debug, info, warning, error
 from vt2m.subcommands import notifications, retrohunts
-
+from rich.logging import RichHandler
+from logging import basicConfig
 app = Typer()
 state = {
     "verbose": False,
@@ -74,10 +75,10 @@ def query(
         vt_key = os.getenv("VT_KEY", None)
 
     if not url or not key or not vt_key:
-        print_err("[ERR] URL and key must be given either through param or env.")
+        error("URL and key must be given either through param or env.")
 
     if pivot and pivot not in lib.file_relations:
-        print_err("[ERR] Pivot relationship is not valid or not implemented.")
+        error("Pivot relationship is not valid or not implemented.")
 
     misp = PyMISP(url, key)
     misp.global_pythonify = True
@@ -102,7 +103,7 @@ def query(
                 )
             )
         if len(pivot_results) == 0:
-            print_err("[PIV] No files returned.")
+            error("[PIV] No files returned.")
             raise typer.Exit(-1)
         else:
             pivot_object = lib.process_results(
@@ -140,7 +141,13 @@ def query(
 
 
 @app.callback()
-def callback(quiet: bool = Option(False, is_flag=True, help="No output except stderr")):
+def callback(
+        quiet: bool = Option(False, is_flag=True, help="No output except stderr"),
+        verbose: bool = Option(False, "-v", "--verbose", is_flag=True, help="Use verbose logging")
+):
+    basicConfig(
+        level="DEBUG" if verbose else "INFO", format="%(message)s", datefmt="[%X]", handlers=[RichHandler()]
+    )
     state["quiet"] = quiet
 
 

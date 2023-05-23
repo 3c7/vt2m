@@ -1,21 +1,58 @@
 from datetime import datetime
+from logging import getLogger
 from typing import Dict
 
-import typer
+from rich.table import Table
+
+LOGGER = getLogger("vt2m")
+
+
+def debug(*args, **kwargs) -> None:
+    """Wrapper for Logger.debug."""
+    LOGGER.debug(*args, **kwargs)
+
+
+def info(*args, **kwargs) -> None:
+    """Wrapper for Logger.info."""
+    LOGGER.info(*args, **kwargs)
 
 
 def print(*args, **kwargs) -> None:
     """Shadows python print method in order to use typer.echo instead."""
-    typer.echo(*args, **kwargs)
+    LOGGER.info(*args, **kwargs)
 
 
-def print_err(s):
-    """Wrapper for printing to stderr."""
-    if s[:5] == "[ERR]":
-        s = typer.style("[ERR]", fg="red") + s[5:]
-    elif s[:6] == "[WARN]":
-        s = typer.style("[WARN]", fg="yellow") + s[6:]
-    print(s, err=True)
+def warning(*args, **kwargs) -> None:
+    """Wrapper for Logger.warning"""
+    LOGGER.warning(*args, **kwargs)
+
+
+def error(*args, **kwargs):
+    """Wrapper for Logger.error"""
+    LOGGER.error(*args, **kwargs)
+
+
+def add_object_to_table(t: Table, obj: Dict, *attributes) -> None:
+    row = []
+    for attrib in attributes:
+        keys = attrib.split(".")
+        tmp = obj
+        for idx, key in enumerate(keys):
+            try:
+                if idx == len(keys) - 1 and "date" in key:
+                    try:
+                        tmp = datetime.fromtimestamp(tmp[key]).isoformat()
+                    except:
+                        tmp = tmp[key]
+                        warning(f"Could not parse {tmp} ({key}) as date.")
+                else:
+                    tmp = tmp[key]
+            except KeyError as ke:
+                tmp = f"<{ke} not found>"
+        if isinstance(tmp, list):
+            tmp = ", ".join(tmp)
+        row.append(str(tmp))
+    t.add_row(*row)
 
 
 def print_file_object(obj: Dict, *attributes: str) -> None:
@@ -35,7 +72,7 @@ def print_file_object(obj: Dict, *attributes: str) -> None:
                     try:
                         tmp = datetime.fromtimestamp(tmp[key]).isoformat()
                     except:
-                        print_err(f"[WARN] Tried to parse {keys} as date, but was not successful.")
+                        warning(f"[WARN] Tried to parse {keys} as date, but was not successful.")
                         tmp = [key]
                 else:
                     tmp = tmp[key]
