@@ -288,6 +288,9 @@ def process_submission(submission: Dict, event: MISPEvent, comment: Optional[str
                        disable_output: bool = False) -> MISPObject:
     """Adds a virustotal-submission object to the given MISP event."""
     s_id = submission.get("source_key")
+    if not s_id:
+        debug("Got an empty submitter ID, skipping...")
+        return None
     if not disable_output:
         info(f"[SUB] Processing submission from submitter {s_id}.")
 
@@ -325,6 +328,9 @@ def process_submission(submission: Dict, event: MISPEvent, comment: Optional[str
 def get_object_if_available(event: MISPEvent, object_name: str, attribute_relation: str,
                             value: str) -> Union[MISPObject, None]:
     """Returns an object if it's already available in the MISP event."""
+    if not value:
+        debug("Got an empty value - there can't be an object with an empty value.")
+        return None
     obj_name = object_name.upper().split('-')[0]
     if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", value):
         obj_name = "IP"
@@ -341,7 +347,7 @@ def get_object_if_available(event: MISPEvent, object_name: str, attribute_relati
 
 def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEvent, relations_string: Optional[str],
                       detections: Optional[int], disable_output: bool = False, extract_domains: bool = False,
-                      limit: int = 40, filter=None):
+                      include_api_submissions: bool = False, limit: int = 40, filter=None):
     """Creates related objects based on given relation string."""
     if not relations_string or len(relations_string) == 0:
         return
@@ -364,7 +370,8 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                 obj=obj,
                 rel=rel,
                 limit=limit,
-                disable_output=disable_output
+                disable_output=disable_output,
+                include_api_submissions=include_api_submissions
             )
             filtered = False
             for r_obj_dict in r_objs:
@@ -464,7 +471,9 @@ def process_relations(*, api_key: str, objects: List[MISPObject], event: MISPEve
                 else:
                     error(f"Could not process returned object \"{r_obj_id}\".")
                     continue
-
+                if not r_obj:
+                    debug("Got no related object, skipping...")
+                    continue
                 try:
                     if rel == "execution_parents":
                         add_reference(r_obj, obj.uuid, "executes")
@@ -557,7 +566,8 @@ def pivot_from_hash(
 
 
 def get_related_objects(
-        *, api_key: str, obj: MISPObject, rel: str, limit: int = 40, disable_output: bool = False
+        *, api_key: str, obj: MISPObject, rel: str, limit: int = 40, include_api_submissions: bool = False,
+        disable_output: bool = False
 ) -> List[Dict]:
     """Gets related objects from VT."""
     endpoint = None
@@ -610,7 +620,11 @@ def get_related_objects(
     related_objects = []
     for related_object in data:
         if "error" in related_object:
-            warning(f"[REL] Object {related_object['id']} not available on VT.")
+            warning(f"[REL] Object {related_object['id']} not available on VT: \"{related_object['error']}\"")
+        elif rel == "submissions" and not include_api_submissions and related_object.get("data", {}).get("interface", None) == "api":
+            sid = related_object.get("data", {}).get("source_key", None)
+            debug(f"[SUBMISSION] Skipping submission because the interface is api: {sid}")
+            continue
         else:
             related_objects.append(related_object)
     if not disable_output:

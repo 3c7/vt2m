@@ -41,6 +41,9 @@ def query(
                                  help="Amount of detections a related VirusTotal object must at least have"),
         extract_domains: bool = Option(False, "--extract-domains", "-D",
                                        help="Extract domains from URL objects and add them as related object."),
+        include_api_submissions: bool = Option(
+            False, "-A", "--include-api", help="Include submission via api for submissions relation."
+        ),
         filter: List[str] = Option(
             [],
             "--filter",
@@ -131,7 +134,8 @@ def query(
         disable_output=state["quiet"],
         extract_domains=extract_domains,
         limit=limit_relations,
-        filter=filter
+        filter=filter,
+        include_api_submissions=include_api_submissions
     )
     if pivot and pivot_object:
         for obj in created_objects:
