@@ -140,39 +140,57 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
         return f_obj
 
     f_obj = event.add_object(name="file", comment=comment if comment else "")
-    f_obj.add_attribute("md5", simple_value=file["md5"])
-    f_obj.add_attribute("sha1", simple_value=file["sha1"])
-    f_obj.add_attribute("sha256", simple_value=sha256)
-    f_obj.add_attribute("size-in-bytes", simple_value=file["size"])
     fs = file.get("first_submission_date", None)
+    ls = file.get("last_submission_date", None)
+    attribute_timestamp = None
     if fs:
-        f_obj.first_seen = datetime.fromtimestamp(fs)
+        fs_ts = datetime.fromtimestamp(fs)
+        attribute_timestamp = fs_ts
+        f_obj.first_seen = fs_ts
+        f_obj.add_attribute(
+            "text",
+            simple_value=f"First submission date: {fs_ts.date().isoformat()}",
+            to_ids=False,
+            disable_correlation=True
+        )
+    if ls and ls != fs:
+        ls_ts = datetime.fromtimestamp(ls)
+        f_obj.add_attribute(
+            "text",
+            simple_value=f"Last submission date: {ls_ts.date().isoformat()}",
+            to_ids=False,
+            disable_correlation=True
+        )
+    f_obj.add_attribute("md5", simple_value=file["md5"], timestamp=attribute_timestamp)
+    f_obj.add_attribute("sha1", simple_value=file["sha1"], timestamp=attribute_timestamp)
+    f_obj.add_attribute("sha256", simple_value=sha256, timestamp=attribute_timestamp)
+    f_obj.add_attribute("size-in-bytes", simple_value=file["size"], timestamp=attribute_timestamp)
 
     names = file.get("names", [])
     if len(names) > 0:
         for name in names:
-            f_obj.add_attribute("filename", simple_value=name, to_ids=False)
+            f_obj.add_attribute("filename", simple_value=name, to_ids=False, timestamp=attribute_timestamp)
 
     imp = file.get("pe_info", {}).get("imphash", None)
     if imp:
-        f_obj.add_attribute("imphash", simple_value=imp)
+        f_obj.add_attribute("imphash", simple_value=imp, timestamp=attribute_timestamp)
 
     vhash = file.get("vhash", None)
     if vhash:
-        f_obj.add_attribute("vhash", simple_value=vhash)
+        f_obj.add_attribute("vhash", simple_value=vhash, timestamp=attribute_timestamp)
 
     tlsh = file.get("tlsh", None)
     if tlsh:
-        f_obj.add_attribute("tlsh", simple_value=tlsh)
+        f_obj.add_attribute("tlsh", simple_value=tlsh, timestamp=attribute_timestamp)
 
     telfhash = file.get("telfhash", None)
     if telfhash:
-        f_obj.add_attribute("telfhash", simple_value=telfhash)
+        f_obj.add_attribute("telfhash", simple_value=telfhash, timestamp=attribute_timestamp)
 
     creation_date = file.get("creation_date", None)
     if creation_date:
         creation_date = datetime.fromtimestamp(creation_date)
-        f_obj.add_attribute("compilation-timestamp", type="datetime", value=creation_date)
+        f_obj.add_attribute("compilation-timestamp", type="datetime", value=creation_date, timestamp=attribute_timestamp)
 
     return f_obj
 
