@@ -63,7 +63,8 @@ def query(
             "related-to",
             "--pivot-relationship",
             help="MISP relationship type for the relation between the initial pivot object and the results."
-        )
+        ),
+        no_verfiy: bool = Option(False, "--no-verify", help="Disables MISP TLS certificate validation.")
 ):
     """
     Query VT for files and add them to a MISP event
@@ -83,7 +84,7 @@ def query(
     if pivot and pivot not in lib.file_relations:
         error("Pivot relationship is not valid or not implemented.")
 
-    misp = PyMISP(url, key)
+    misp = PyMISP(url, key, ssl=not no_verfiy)
     misp.global_pythonify = True
     event = misp.get_event(uuid)
     results = lib.vt_query(
