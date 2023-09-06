@@ -72,7 +72,8 @@ def import_notifications(
         relation_filter: List[str] = typer.Option([], "--filter", "-f",
                                                   help="Filtering related objects by matching this string(s) "
                                                        "against json dumps of the objects"),
-        quiet: bool = typer.Option(False, "--quiet", "-q", help="Disable output")
+        quiet: bool = typer.Option(False, "--quiet", "-q", help="Disable output"),
+        no_verifiy: bool = typer.Option(False, "--no-verify", help="Disables MISP TLS certificate validation.")
 ):
     """Import files related to notifications"""
     if not url:
@@ -88,7 +89,7 @@ def import_notifications(
         error("URL and key must be given either through param or env.")
         raise typer.Exit(-1)
 
-    misp = PyMISP(url, key)
+    misp = PyMISP(url, key, ssl=not no_verifiy)
     misp.global_pythonify = True
     event = misp.get_event(uuid)
 

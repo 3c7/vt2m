@@ -80,7 +80,8 @@ def import_retrohunt(
         filter: List[str] = typer.Option([], "--filter", "-f",
                                          help="Filtering related objects by matching this string(s) "
                                               "against json dumps of the objects"),
-        quiet: bool = typer.Option(False, "--quiet", "-q", help="Disable output")
+        quiet: bool = typer.Option(False, "--quiet", "-q", help="Disable output"),
+        no_verifiy: bool = typer.Option(False, "--no-verify", help="Disables MISP TLS certificate validation.")
 ):
     """Imports results of a retrohunt into a MISP event"""
     if not url:
@@ -100,7 +101,7 @@ def import_retrohunt(
         error("URL and key must be given either through param or env.")
         raise typer.Exit(-1)
 
-    misp = PyMISP(url, key)
+    misp = PyMISP(url, key, ssl=not no_verifiy)
     misp.global_pythonify = True
     event = misp.get_event(uuid)
 

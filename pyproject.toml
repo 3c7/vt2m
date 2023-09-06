@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "vt2m"
-version = "0.1.15"
+version = "0.1.16"
 description = "Automatically import results from VirusTotal queries into MISP objects"
 authors = ["3c7 <3c7@posteo.de>"]
 license = "MIT"
@@ -31,7 +31,7 @@ include = [
 python = "^3.8"
 requests = "^2.27.1"
 vt-py = "^0.17.4"
-pymisp = "^2.4.169.3"
+pymisp = "^2.4.175"
 typer = "^0.9.0"
 rich = "^13.3.5"
 
