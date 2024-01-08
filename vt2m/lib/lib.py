@@ -190,7 +190,8 @@ def process_file(file: Dict, event: MISPEvent, comment: Optional[str] = None,
     creation_date = file.get("creation_date", None)
     if creation_date:
         creation_date = datetime.fromtimestamp(creation_date)
-        f_obj.add_attribute("compilation-timestamp", type="datetime", value=creation_date, timestamp=attribute_timestamp)
+        f_obj.add_attribute("compilation-timestamp", type="datetime", value=creation_date,
+                            timestamp=attribute_timestamp)
 
     return f_obj
 
@@ -583,6 +584,51 @@ def pivot_from_hash(
     return data
 
 
+def pivot_from_domain(
+        *,
+        api_key: str,
+        domain: str,
+        rel: str,
+        limit: int = 40,
+        disable_output: bool = False
+) -> List[Dict]:
+    """Pivots from a domain and retrieves file objects in 'rel' relation. Returns a list of VT dictionaries."""
+    if not disable_output:
+        info(f"[PIV] Pivot to {rel} from {domain}.")
+
+    if rel not in communication_relations:
+        raise NotImplementedError(f"Pivot from domains via {rel} not implemented.")
+
+    data = []
+    with VTClient(api_key) as client:
+        cursor = ""
+        while limit > 0:
+            query_limit = limit if limit <= 40 else 40
+            limit -= limit if limit <= 40 else 40
+            url = f"/domains/{domain}/{rel}?limit={query_limit}"
+            if cursor != "":
+                url += f"&cursor={cursor}"
+            res = client.get(url).json()
+
+            if "error" in res:
+                error(f"[PIV] Error during receiving related objects: {res['error']}.")
+                return []
+
+            data.extend(res["data"])
+
+            meta = res.get("meta", {})
+            if "cursor" in meta:
+                cursor = meta["cursor"]
+            else:
+                # Reset cursor and set limit to 0 in order to exit the loop
+                cursor = ""
+                limit = 0
+    if not disable_output:
+        for d in data:
+            info(f"[PIV] Got {d['attributes']['sha256']}.")
+    return data
+
+
 def get_related_objects(
         *, api_key: str, obj: MISPObject, rel: str, limit: int = 40, include_api_submissions: bool = False,
         disable_output: bool = False
@@ -639,7 +685,8 @@ def get_related_objects(
     for related_object in data:
         if "error" in related_object:
             warning(f"[REL] Object {related_object['id']} not available on VT: \"{related_object['error']}\"")
-        elif rel == "submissions" and not include_api_submissions and related_object.get("data", {}).get("interface", None) == "api":
+        elif rel == "submissions" and not include_api_submissions and related_object.get("data", {}).get("interface",
+                                                                                                         None) == "api":
             sid = related_object.get("data", {}).get("source_key", None)
             debug(f"[SUBMISSION] Skipping submission because the interface is api: {sid}")
             continue

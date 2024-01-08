@@ -31,7 +31,7 @@ include = [
 python = "^3.8"
 requests = "^2.27.1"
 vt-py = "^0.17.4"
-pymisp = "^2.4.175"
+pymisp = "^2.4.183"
 typer = "^0.9.0"
 rich = "^13.3.5"
 

@@ -1,15 +1,16 @@
 import os
+from logging import basicConfig
 from typing import List
 
 import typer
 from pymisp import PyMISP
+from rich.logging import RichHandler
 from typer import Typer, Option, Argument
 
 from vt2m.lib import lib
-from vt2m.lib.output import debug, info, warning, error
+from vt2m.lib.output import error
 from vt2m.subcommands import notifications, retrohunts
-from rich.logging import RichHandler
-from logging import basicConfig
+
 app = Typer()
 state = {
     "verbose": False,
@@ -55,7 +56,8 @@ def query(
             "-p",
             "--pivot",
             help="Pivot from the given query before resolving relationships. This must be a valid VT file relation "
-                 f"({', '.join(lib.file_relations)})."
+                 f"({', '.join(lib.file_relations)}) or communication relation "
+                 f"({', '.join(lib.communication_relations)})."
         ),
         pivot_limit: int = Option(40, "-P", "--pivot-limit", help="Limit the amount of files returned by a pivot."),
         pivot_comment: str = Option(None, "-C", "--pivot-comment", help="Comment to add to the initial pivot object."),
@@ -81,7 +83,7 @@ def query(
     if not url or not key or not vt_key:
         error("URL and key must be given either through param or env.")
 
-    if pivot and pivot not in lib.file_relations:
+    if pivot and pivot not in lib.file_relations and pivot not in lib.communication_relations:
         error("Pivot relationship is not valid or not implemented.")
 
     misp = PyMISP(url, key, ssl=not no_verifiy)
@@ -97,15 +99,29 @@ def query(
     if pivot:
         pivot_results = []
         for r in results:
-            pivot_results.extend(
-                lib.pivot_from_hash(
-                    api_key=vt_key,
-                    sha256_hash=r["attributes"]["sha256"],
-                    rel=pivot,
-                    limit=pivot_limit,
-                    disable_output=state["quiet"]
+            if r["type"] == "file":
+                pivot_results.extend(
+                    lib.pivot_from_hash(
+                        api_key=vt_key,
+                        sha256_hash=r["attributes"]["sha256"],
+                        rel=pivot,
+                        limit=pivot_limit,
+                        disable_output=state["quiet"]
+                    )
                 )
-            )
+            elif r["type"] == "domain":
+                pivot_results.extend(
+                    lib.pivot_from_domain(
+                        api_key=vt_key,
+                        domain=r["id"],
+                        rel=pivot,
+                        limit=pivot_limit,
+                        disable_output=state["quiet"]
+                    )
+                )
+            else:
+                error(f"Unrecognized or not implemented VT object type "
+                      f"\"{r['type']}\" for object {r['id'].replace('.', '[.]')}")
         if len(pivot_results) == 0:
             error("[PIV] No files returned.")
             raise typer.Exit(-1)
