@@ -679,13 +679,13 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "vt-py"
-version = "0.17.5"
+version = "0.18.0"
 description = "The official Python client library for VirusTotal"
 optional = false
-python-versions = ">=3.6.0"
+python-versions = ">=3.7.0"
 files = [
-    {file = "vt-py-0.17.5.tar.gz", hash = "sha256:b21fd1fc70be0d21f0f7e5ba45e3fe3a2201132d6d073bb8265c88ad1dcb695a"},
-    {file = "vt_py-0.17.5-py3-none-any.whl", hash = "sha256:aaa7bc825e01ee75ee5146b7e8c0f259adaf67308120770cd539834c9406063e"},
+    {file = "vt-py-0.18.0.tar.gz", hash = "sha256:aa1d481e85028bd2134ee6fb8885efb73256c659e2a125d7772fe68c2b0c7f6f"},
+    {file = "vt_py-0.18.0-py3-none-any.whl", hash = "sha256:a2cfaf523e906e6f0d833ffa627858ed9fdfa22ed27dc99d9bb46a2a4fe0c2f0"},
 ]
 
 [package.dependencies]
@@ -879,4 +879,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "087fa59b9edf730dd40d7a2d94f1fbc1a943bc277467b633eb0f0e511bb37bd5"
+content-hash = "24e8d800b2dba4f5963021ff008d2c89aa959180214c0582e170a081609830eb"
